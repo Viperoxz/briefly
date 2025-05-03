@@ -1,0 +1,81 @@
+{
+  "VnExpress": {
+    "Trang chủ": "https://vnexpress.net/rss/tin-moi-nhat.rss",
+    "Thời sự": "https://vnexpress.net/rss/thoi-su.rss",
+    "Thế giới": "https://vnexpress.net/rss/the-gioi.rss",
+    "Kinh doanh": "https://vnexpress.net/rss/kinh-doanh.rss",
+    "Công nghệ": "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss",
+    "Giáo dục": "https://vnexpress.net/rss/giao-duc.rss",
+    "Pháp luật": "https://vnexpress.net/rss/phap-luat.rss",
+    "Giải trí": "https://vnexpress.net/rss/giai-tri.rss",
+    "Thể thao": "https://vnexpress.net/rss/the-thao.rss",
+    "Sức khỏe": "https://vnexpress.net/rss/suc-khoe.rss",
+    "Du lịch": "https://vnexpress.net/rss/du-lich.rss",
+    "Xe": "https://vnexpress.net/rss/oto-xe-may.rss"
+  },
+  "Tuổi Trẻ": {
+    "Trang chủ": "https://tuoitre.vn/rss/tin-moi-nhat.rss",
+    "Thời sự": "https://tuoitre.vn/rss/thoi-su.rss",
+    "Thế giới": "https://tuoitre.vn/rss/the-gioi.rss",
+    "Kinh doanh": "https://tuoitre.vn/rss/kinh-doanh.rss",
+    "Công nghệ": "https://tuoitre.vn/rss/nhip-song-so.rss",
+    "Giáo dục": "https://tuoitre.vn/rss/giao-duc.rss",
+    "Pháp luật": "https://tuoitre.vn/rss/phap-luat.rss",
+    "Giải trí": "https://tuoitre.vn/rss/giai-tri.rss",
+    "Thể thao": "https://tuoitre.vn/rss/the-thao.rss",
+    "Sức khỏe": "https://tuoitre.vn/rss/suc-khoe.rss",
+    "Du lịch": "https://tuoitre.vn/rss/du-lich.rss",
+    "Xe": "https://tuoitre.vn/rss/xe.rss"
+  },
+  "Dân Trí": {
+    "Trang chủ": "https://dantri.com.vn/rss/home.rss",
+    "Thời sự": "https://dantri.com.vn/rss/xa-hoi.rss",
+    "Thế giới": "https://dantri.com.vn/rss/the-gioi.rss",
+    "Kinh doanh": "https://dantri.com.vn/rss/kinh-doanh.rss",
+    "Công nghệ": "https://dantri.com.vn/rss/cong-nghe.rss",
+    "Giáo dục": "https://dantri.com.vn/rss/giao-duc.rss",
+    "Pháp luật": "https://dantri.com.vn/rss/phap-luat.rss",
+    "Giải trí": "https://dantri.com.vn/rss/giai-tri.rss",
+    "Thể thao": "https://dantri.com.vn/rss/the-thao.rss",
+    "Sức khỏe": "https://dantri.com.vn/rss/suc-khoe.rss",
+    "Du lịch": "https://dantri.com.vn/rss/du-lich.rss",
+    "Xe": "https://dantri.com.vn/rss/o-to-xe-may.rss"
+  },
+  "Báo Người Lao Động": {
+    "Trang chủ": "https://nld.com.vn/rss/home.rss",
+    "Thời sự": "https://nld.com.vn/rss/thoi-su.rss",
+    "Thế giới": "https://nld.com.vn/rss/quoc-te.rss",
+    "Kinh tế": "https://nld.com.vn/rss/kinh-te.rss",
+    "Giáo dục": "https://nld.com.vn/rss/giao-duc-khoa-hoc.rss",
+    "Pháp luật": "https://nld.com.vn/rss/phap-luat.rss",
+    "Giải trí": "https://nld.com.vn/rss/giai-tri.rss",
+    "Thể thao": "https://nld.com.vn/rss/the-thao.rss",
+    "Sức khỏe": "https://nld.com.vn/rss/suc-khoe.rss",
+    "Du lịch": "https://nld.com.vn/rss/du-lich.rss"
+  },
+  "Thanh Niên": {
+    "Trang chủ": "https://thanhnien.vn/rss/home.rss",
+    "Thời sự": "https://thanhnien.vn/rss/thoi-su.rss",
+    "Thế giới": "https://thanhnien.vn/rss/the-gioi.rss",
+    "Kinh doanh": "https://thanhnien.vn/rss/kinh-te.rss",
+    "Giáo dục": "https://thanhnien.vn/rss/giao-duc.rss",
+    "Giải trí": "https://thanhnien.vn/rss/giai-tri.rss",
+    "Thể thao": "https://thanhnien.vn/rss/the-thao.rss",
+    "Công nghệ": "https://thanhnien.vn/rss/cong-nghe.rss",
+    "Sức khỏe": "https://thanhnien.vn/rss/suc-khoe.rss",
+    "Xe": "https://thanhnien.vn/rss/xe.rss"
+  },
+  "Báo VietnamNet": {
+    "Trang chủ": "https://vietnamnet.vn/rss/home.rss",
+    "Thời sự": "https://vietnamnet.vn/rss/thoi-su.rss",
+    "Thế giới": "https://vietnamnet.vn/rss/the-gioi.rss",
+    "Kinh doanh": "https://vietnamnet.vn/rss/kinh-doanh.rss",
+    "Giáo dục": "https://vietnamnet.vn/rss/giao-duc.rss",
+    "Pháp luật": "https://vietnamnet.vn/rss/phap-luat.rss",
+    "Giải trí": "https://vietnamnet.vn/rss/giai-tri.rss",
+    "Thể thao": "https://vietnamnet.vn/rss/the-thao.rss",
+    "Công nghệ": "https://vietnamnet.vn/rss/cong-nghe.rss",
+    "Sức khỏe": "https://vietnamnet.vn/rss/suc-khoe.rss",
+    "Xe": "https://vietnamnet.vn/rss/oto-xe-may.rss"
+  }
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.tmp_dagster_home*
+.pytest_cache/
+*.egg-info/
+.venv/
+.idea/
