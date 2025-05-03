@@ -12,6 +12,7 @@ from ..utils.extract_utils import (
 from ..models.article import Article
 from dateutil.parser import parse as parse_date
 
+
 @asset(
     key="articles",
     io_manager_key="mongo_io_manager"
@@ -38,7 +39,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                     image_url = extract_image_url_from_description(entry.description)
 
                     if content and image_url:
-                        articles = Article(
+                        article = Article(
                             source=source,
                             topic=topic,
                             title=title,
@@ -47,7 +48,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                             published=parse_date(entry.get("published", "")).isoformat() if entry.get("published") else "",
                             content=content
                         )
-                        articles.append(articles.dict())
+                        articles.append(article.dict())
                         # articles.append({
                         #     "source": source,
                         #     "topic": topic,

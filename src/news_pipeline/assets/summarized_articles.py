@@ -1,6 +1,6 @@
 import pandas as pd
 from dagster import asset, get_dagster_logger, Output
-from ..utils.extract_utils import summarize_content
+from ..utils.summarize_utils import summarize_content
 from ..models.summarized_article import SummarizedArticle
 from typing import List
 
@@ -10,7 +10,7 @@ from typing import List
     io_manager_key="mongo_io_manager",
     deps=["articles"]
 )
-def summarized_articles(articles: pd.DataFrame, qdrant_io_manager) -> Output[pd.DataFrame]:
+def summarized_articles(articles: pd.DataFrame) -> Output[pd.DataFrame]:
     """Summarize articles, update summary in MongoDB, and store embeddings in Qdrant."""
     logger = get_dagster_logger()
     summarized_articles: List[dict] = []
