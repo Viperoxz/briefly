@@ -16,6 +16,7 @@ setup(
         "python-dotenv",
         "pydantic",
         "groq",
+        "tenacity"
 
     ],
     extras_require={"dev": ["dagster-webserver", "pytest"]},

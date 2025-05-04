@@ -21,9 +21,14 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """Fetch raw articles from all RSS feeds and save to MongoDB."""
     logger = get_dagster_logger()
     articles = []
+    max_articles = 100
 
     for source, topics in rss_feed_list.items():
+        if len(articles) >= max_articles:
+            break
         for topic, url in topics.items():
+            if len(articles) >= max_articles:
+                break
             logger.info(f"\n📥 Fetching: {source} | {topic}")
             feed = feedparser.parse(url)
             total_entries = len(feed.entries)
@@ -32,7 +37,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
             success_count = 0
             failure_count = 0
 
-            for entry in feed.entries[:1]:  # Still limiting to 1 for now
+            for entry in feed.entries[:1]:  
                 try:
                     title = html.unescape(html.unescape(entry.title))
                     content = extract_full_article(entry.link)
