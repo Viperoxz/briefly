@@ -5,9 +5,9 @@ from pathlib import Path
 import pandas as pd
 import feedparser
 from dagster import asset, get_dagster_logger, Output
-from ..utils.extract_utils import (
+from ..utils.extraction import (
     extract_full_article,
-    extract_image_url_from_description,
+    extract_image_url_from_description
 )
 from ..models.article import Article
 from dateutil.parser import parse as parse_date
@@ -21,7 +21,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """Fetch raw articles from all RSS feeds and save to MongoDB."""
     logger = get_dagster_logger()
     articles = []
-    max_articles = 100
+    max_articles = 5
 
     for source, topics in rss_feed_list.items():
         if len(articles) >= max_articles:
@@ -38,6 +38,8 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
             failure_count = 0
 
             for entry in feed.entries[:1]:  
+                if len(articles) >= max_articles:
+                    break
                 try:
                     title = html.unescape(html.unescape(entry.title))
                     content = extract_full_article(entry.link)

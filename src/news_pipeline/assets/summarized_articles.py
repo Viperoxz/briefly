@@ -1,6 +1,6 @@
 import pandas as pd
 from dagster import asset, get_dagster_logger, Output
-from ..utils.summarize_utils import summarize_content
+from ..utils.summarization.summarize_utils import summarize_content
 from ..models.summarized_article import SummarizedArticle
 from typing import List
 

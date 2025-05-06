@@ -1,5 +1,5 @@
 import pytest
-from ..news_pipeline.assets.articles import extract_full_article
+from ..news_pipeline.assets.raw_articles import extract_full_article
 
 # Use a real article URL that is likely to remain stable
 SAMPLE_ARTICLE_URL = "https://www.bbc.com/news/world-us-canada-68748038"

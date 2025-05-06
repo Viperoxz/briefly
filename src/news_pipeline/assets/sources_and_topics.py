@@ -1,6 +1,6 @@
 import pandas as pd
 from dagster import asset, Output
-from ..utils.extract_utils import slugify, alias_from_topic
+from ..utils.extraction import slugify, alias_from_topic
 
 @asset(
     key="sources",
