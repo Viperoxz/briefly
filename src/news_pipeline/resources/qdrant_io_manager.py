@@ -1,61 +1,56 @@
-from dagster import IOManager, OutputContext
-from typing import List, Dict, Any
+from dagster import IOManager, OutputContext, InputContext
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import PointStruct
+from qdrant_client.http.models import Distance, VectorParams, PointStruct
 import os
-from ..config import settings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class QdrantIOManager(IOManager):
-    def __init__(self, config: Dict[str, str]):
+    def __init__(self, config):
+        self._config = config
         self.client = QdrantClient(
-            url=config["QDRANT_URL"],
-            api_key=config["QDRANT_API_KEY"]
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+            prefer_grpc=True
         )
-        self.collection_name = config["QDRANT_COLLECTION"]
-        # Initialize collection if not exists
+        self.collection_name = "ArticleEmbeddings"
+        
         try:
-            self.client.get_collection(self.collection_name)
-        except Exception:
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config={"size": 768, "distance": "Cosine"}
-            )
-
-    def store_embeddings(self, points: List[PointStruct]):
-        """Store embeddings into Qdrant."""
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=points
-        )
-
-    def handle_output(self, context: OutputContext, obj: Dict):
-        """Handle output from embedded_articles and store in Qdrant."""
-        if not obj:  # Skip empty objects (from errors in embedded_articles)
-            return
-
-        points = []
-        link = obj["link"]
-        for idx, embedding in enumerate(obj.get("embeddings", [])):
-            if embedding:
-                point_id = f"{link}_chunk_{idx}"
-                points.append(
-                    PointStruct(
-                        id=point_id,
-                        vector=embedding,
-                        payload={
-                            "article_link": link,
-                            "source": obj["source"],
-                            "topic": obj["topic"],
-                            "chunk_index": idx,
-                            "title": obj["title"],
-                            "summary": obj["summary"],
-                            "published": obj["published"]
-                        }
-                    )
+            collections = self.client.get_collections()
+            if self.collection_name not in [c.name for c in collections.collections]:
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(size=384, distance=Distance.COSINE)
                 )
+                print(f"Created Qdrant collection: {self.collection_name}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize Qdrant collection: {e}")
 
-        if points:
-            self.store_embeddings(points)
+    def store_embedding(self, point_id: str, vector: list, payload: dict):
+        try:
+            point = PointStruct(
+                id=point_id,
+                vector=vector,
+                payload=payload
+            )
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=[point]
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to store embedding in Qdrant: {e}")
 
-    def load_input(self, context):
-        raise NotImplementedError("QdrantIOManager does not support loading inputs")
+    def handle_output(self, context: OutputContext, obj):
+        pass  # Handled by store_embedding
+
+    def load_input(self, context: InputContext):
+        try:
+            points = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=100,
+                with_vectors=True
+            )[0]
+            return points
+        except Exception as e:
+            raise RuntimeError(f"Failed to load embeddings from Qdrant: {e}")
