@@ -1,55 +1,35 @@
-from groq import Groq
-import os
-from dotenv import load_dotenv
-from dagster import get_dagster_logger
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import time
 import asyncio
-import aiohttp
-import redis
+from groq import Groq
+from tenacity import retry, stop_after_attempt, wait_fixed
+from ...config import settings
 
-load_dotenv()
-
-
-@retry(
-    stop=stop_after_attempt(3),  # Retry up to 3 times
-    wait=wait_exponential(multiplier=1, min=4, max=10),  # Exponential backoff
-    retry=retry_if_exception_type(Exception)  # Retry on any exception (customize for 429 if needed)
-)
-def summarize_content(content: str, max_length: int = 512) -> str:
-    logger = get_dagster_logger()
-    api_key = os.getenv("GROQ_API_KEY")
-    model_id = os.getenv("GROQ_MODEL_ID")  
-    
-    if not api_key:
-        logger.error("GROQ_API_KEY is not set in the environment variables.")
-        return ""
-    if not model_id:
-        logger.error("GROQ_MODEL_ID is not set in the environment variables.")
-        return ""
-
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+async def summarize_content_async(content: str) -> str:
+    """Summarize content asynchronously with retry logic."""
+    client = Groq(api_key=settings.GROQ_API_KEY)
     try:
-        client = Groq(api_key=api_key)
-        prompt = (
-        "Đây là một bài báo tin tức bằng tiếng Việt. Hãy tóm tắt nội dung thành 4 ý chính dưới dạng dấu đầu dòng, "
-        "tập trung vào các thông tin quan trọng và khách quan. Không tóm tắt quá ngắn (ít nhất 20 kí tự). **Không sinh ra câu giới thiệu hay bất kỳ câu thừa nào**.\n\n"
-        f"{content}")
-
-        response = client.chat.completions.create(
-            model=model_id,  
-            messages=[
-                {"role": "system", "content": "Bạn là một trợ lý thông minh, giỏi tóm tắt văn bản tiếng Việt một cách rõ ràng."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=max_length,
-            temperature=0.5,
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model=settings.GROQ_MODEL_ID,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Summarize the following news article into 4 concise points in Vietnamese. Each point should be a short or medium sentence."
+                    },
+                    {"role": "user", "content": content}
+                ],
+                temperature=0.7,
+                max_tokens=150
+            )
         )
-        
         summary = response.choices[0].message.content.strip()
-        logger.info(f"Summarize successfully: ({len(summary.split())} words)")
-        time.sleep(1)  
+        if not summary:
+            raise ValueError("Summary is empty")
         return summary
-    
     except Exception as e:
-        logger.error(f"Error when summarizing: {e}")
-        return ""
+        raise Exception(f"Failed to summarize content: {e}")
+
+def summarize_content(content: str) -> str:
+    """Synchronous wrapper for summarize_content_async."""
+    return asyncio.run(summarize_content_async(content))

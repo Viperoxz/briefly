@@ -1,74 +1,59 @@
+from dagster import asset, get_dagster_logger, Output, DynamicPartitionsDefinition
 import pandas as pd
-from dagster import asset, get_dagster_logger, Output
 from ..utils.summarization.summarize_utils import summarize_content
 from ..models.summarized_article import SummarizedArticle
-from typing import List
+from typing import Dict
 
+# Định nghĩa phân vùng động cho bài báo
+article_partitions_def = DynamicPartitionsDefinition(name="articles")
 
 @asset(
-    key="summarized_articles",
+    key="summarized_article",
     io_manager_key="mongo_io_manager",
+    partitions_def=article_partitions_def,
     deps=["articles"]
 )
-def summarized_articles(articles: pd.DataFrame) -> Output[pd.DataFrame]:
-    """Summarize articles, update summary in MongoDB, and store embeddings in Qdrant."""
+def summarized_article(context, articles: pd.DataFrame) -> Output[Dict]:
+    """Tóm tắt bài báo và cập nhật MongoDB."""
     logger = get_dagster_logger()
-    summarized_articles: List[dict] = []
-    
-    for _, article in articles.iterrows():
-        try:
-            # Validate article using Pydantic
-            article_model = SummarizedArticle(
-                source=article["source"],
-                topic=article["topic"],
-                title=article["title"],
-                link=article["link"],
-                image=article["image"],
-                published=article["published"],
-                content=article["content"],
-                summary=""  # Temporary empty summary
-            )
-            
-            # Summarize content
-            summary = summarize_content(article_model.content)
-            if not summary:
-                logger.warning(f"Skipped summarization for {article_model.link}: No summary generated")
-                continue
-                
-            article_model.summary = summary
-            
-            # # Generate embedding for summary
-            # embedding = generate_embedding(summary)
-            # if embedding is None:
-            #     logger.warning(f"Skipped embedding for {article_model.link}: Failed to generate embedding")
-            #     continue
-                
-            # # Store embedding in Qdrant
-            # qdrant_io_manager.store_embedding(
-            #     point_id=str(article_model.link),
-            #     vector=embedding,
-            #     payload={
-            #         "source": article_model.source,
-            #         "topic": article_model.topic,
-            #         "title": article_model.title
-            #     }
-            # )
-            
-            summarized_articles.append(article_model.dict())
-            
-        except Exception as e:
-            logger.error(f"Failed to process article {article.get('link', 'unknown')}: {e}")
-            continue
-    
-    logger.info(f"Processed {len(summarized_articles)} summarized articles")
-    
-    # Convert to DataFrame for MongoDB storage
-    df = pd.DataFrame(summarized_articles)
-    
-    return Output(
-        value=df,
-        metadata={
-            "num_summarized_articles": len(summarized_articles),
-            "sample_summary": summarized_articles[0]["summary"] if summarized_articles else None,
-        }
-    )
+    article_id = context.partition_key
+
+    # Tìm bài báo tương ứng với partition_key
+    article = articles[articles['link'] == article_id]
+    if article.empty:
+        logger.error(f"Không tìm thấy bài báo với ID {article_id}")
+        return Output(value={}, metadata={"num_articles": 0})
+
+    article = article.iloc[0]
+    try:
+        article_model = SummarizedArticle(
+            source=article["source"],
+            topic=article["topic"],
+            title=article["title"],
+            link=article["link"],
+            image=article.get("image", None),
+            published=article["published"],
+            content=article["content"],
+            summary=""
+        )
+
+        # Tóm tắt nội dung
+        summary = summarize_content(article_model.content)
+        article_model.summary = summary
+
+        # Cập nhật MongoDB ngay lập tức
+        context.resources.mongo_io_manager.collection.update_one(
+            {"link": article_model.link},
+            {"$set": {"summary": summary}},
+            upsert=True
+        )
+        logger.info(f"Đã tóm tắt bài báo {article_model.link}")
+
+        return Output(
+            value=article_model.model_dump(),
+            metadata={"num_articles": 1}
+        )
+
+    except Exception as e:
+        logger.error(f"Lỗi khi tóm tắt bài báo {article_id}: {e}")
+        return Output(value={}, metadata={"num_articles": 0})

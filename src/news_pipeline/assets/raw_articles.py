@@ -21,13 +21,10 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """Fetch raw articles from all RSS feeds and save to MongoDB."""
     logger = get_dagster_logger()
     articles = []
-    max_articles = 5
 
     for source, topics in rss_feed_list.items():
-        if len(articles) >= max_articles:
-            break
         for topic, url in topics.items():
-            if len(articles) >= max_articles:
+            if len(articles) >= 10:
                 break
             logger.info(f"\n📥 Fetching: {source} | {topic}")
             feed = feedparser.parse(url)
@@ -38,8 +35,6 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
             failure_count = 0
 
             for entry in feed.entries[:1]:  
-                if len(articles) >= max_articles:
-                    break
                 try:
                     title = html.unescape(html.unescape(entry.title))
                     content = extract_full_article(entry.link)
@@ -55,7 +50,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                             published=parse_date(entry.get("published", "")).isoformat() if entry.get("published") else "",
                             content=content
                         )
-                        articles.append(article.dict())
+                        articles.append(article.model_dump())
                         # articles.append({
                         #     "source": source,
                         #     "topic": topic,
@@ -74,6 +69,8 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                     failure_count += 1
 
             logger.info(f"✅ Success: {success_count} | ❌ Failures: {failure_count}")
+        if len(articles) >= 10:
+                break
 
     logger.info(f"\n📦 Total collected: {len(articles)} articles")
 

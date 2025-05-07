@@ -1,24 +1,37 @@
 from dagster import Definitions
-from .assets import rss_feed_list, sources, topics, raw_articles, summarized_articles, embedded_articles
+from .assets import (
+    rss_feed_list,
+    sources,
+    topics,
+    raw_articles as articles,
+    summarized_articles,
+    embedded_articles
+)
 from .resources.mongo_io_manager import MongoDBIOManager
 from .resources.qdrant_io_manager import QdrantIOManager
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from .config import settings
 
 MONGO_CONFIG = {
-    "uri": os.getenv("MONGO_URI"),
-    "database": os.getenv("MONGO_DB")
+    "mongo_uri": settings.MONGO_URI,
+    "mongo_db": settings.MONGO_DB,
+    "mongo_collection": "Articles"
 }
 
 QDRANT_CONFIG = {
-    "url": os.getenv("QDRANT_URL"),
-    "api_key": os.getenv("QDRANT_API_KEY")
+    "QDRANT_URL": settings.QDRANT_URL,
+    "QDRANT_API_KEY": settings.QDRANT_API_KEY,
+    "QDRANT_COLLECTION": "news_articles"
 }
 
 defs = Definitions(
-    assets=[rss_feed_list, sources, topics, raw_articles, summarized_articles, embedded_articles],
+    assets=[
+        rss_feed_list,
+        sources,
+        topics,
+        articles,
+        summarized_articles,
+        embedded_articles
+    ],
     resources={
         "mongo_io_manager": MongoDBIOManager(MONGO_CONFIG),
         "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG),

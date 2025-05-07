@@ -1,40 +1,51 @@
 import asyncio
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
 from typing import List, Union
 from dagster import get_dagster_logger
 from ...config import settings
 import os
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
 class Embedder:
     def __init__(self):
         self.logger = get_dagster_logger()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.logger.info(f"Initializing Embedder on device: {self.device}")
+        
         self.model = SentenceTransformer(
             settings.EMBEDDING_MODEL_ID,
-            trust_remote_code=True  
-        )
+            trust_remote_code=True
+        ).to(self.device)
+        
         # Try to use fp16 if supported
         try:
-            self.model.half()
-            self.logger.info("Using fp16 for embedding model")
+            if self.device.type == "cuda":
+                self.model.half()
+                self.logger.info("Using fp16 for embedding model")
         except Exception as e:
             self.logger.warning(f"Could not use fp16: {e}")
 
     async def encode_batch(self, batch: List[str]) -> np.ndarray:
         """Encode a batch of chunks with rate limit handling."""
+        start_time = time.time()
         await asyncio.sleep(settings.SLEEP_TIME)
+        
         try:
-            embeddings = self.model.encode(
-                batch,
-                batch_size=len(batch),
-                show_progress_bar=False,
-                normalize_embeddings=False,
-                convert_to_numpy=True,
-            )
-            self.logger.info(f"Encoded batch of {len(batch)} chunks")
+            with torch.no_grad():  # Disable gradient for efficiency
+                embeddings = self.model.encode(
+                    batch,
+                    batch_size=len(batch),
+                    show_progress_bar=False,
+                    normalize_embeddings=False,
+                    convert_to_numpy=True,
+                    device=self.device
+                )
+            self.logger.debug(f"Encoded batch of {len(batch)} chunks in {time.time() - start_time:.2f}s")
             return embeddings
         except Exception as e:
             self.logger.error(f"Failed to encode batch: {e}")
@@ -42,6 +53,7 @@ class Embedder:
 
     async def embed_chunks(self, chunks: List[str]) -> List[np.ndarray]:
         """Embed multiple chunks with parallel batch processing."""
+        start_time = time.time()
         batches = [
             chunks[i:i + settings.BATCH_SIZE]
             for i in range(0, len(chunks), settings.BATCH_SIZE)
@@ -56,10 +68,13 @@ class Embedder:
         embeddings = await asyncio.gather(*tasks)
         
         # Flatten embeddings
-        return [emb for batch_emb in embeddings for emb in batch_emb if emb.size > 0]
+        result = [emb for batch_emb in embeddings for emb in batch_emb if emb.size > 0]
+        self.logger.debug(f"Embedded {len(result)} chunks in {time.time() - start_time:.2f}s")
+        return result
 
-def generate_embedding(texts: List[str]) -> List[List[float]]:
+def generate_embedding(texts: List[List[str]]) -> List[List[float]]:
     """Generate embeddings for a list of texts (each text is a list of chunks)."""
+    start_time = time.time()
     logger = get_dagster_logger()
     try:
         embedder = Embedder()
@@ -86,7 +101,7 @@ def generate_embedding(texts: List[str]) -> List[List[float]]:
                     text_embeddings.append([])
             result.append(text_embeddings)
 
-        logger.info(f"Generated {len(embeddings)} embeddings for {len(texts)} texts")
+        logger.info(f"Generated {len(embeddings)} embeddings for {len(texts)} texts in {time.time() - start_time:.2f}s")
         return result
     except Exception as e:
         logger.error(f"Failed to generate embeddings: {e}")
