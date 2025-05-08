@@ -1,55 +1,84 @@
 from dagster import asset, get_dagster_logger, Output, DynamicPartitionsDefinition, AssetIn
-import pandas as pd
+from tenacity import retry, stop_after_attempt, wait_fixed
 from ..utils.embedding import clean_text, chunk_text, generate_embedding
 from ..models.embedded_article import EmbeddedArticle
-from typing import Dict, List
+from ..models.article import Article
+import pandas as pd
+from typing import Dict
 
 # Định nghĩa phân vùng động cho bài báo
-article_partitions_def = DynamicPartitionsDefinition(name="articles")
+article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+def ensure_mongo_record(mongo_io_manager, article_model):
+    """Ensure article exists in MongoDB with retry logic."""
+    logger = get_dagster_logger()
+    doc = mongo_io_manager.collection.find_one({"link": article_model.link})
+    if not doc:
+        mongo_io_manager.collection.insert_one(article_model.dict())
+        logger.info(f"Đã chèn bài báo {article_model.link} vào MongoDB")
+    return True
 
 @asset(
     key="embedded_articles",
     io_manager_key="qdrant_io_manager",
     partitions_def=article_partitions_def,
-    ins={"summarized_article": AssetIn(key="summarized_article")}
+    ins={"raw_articles": AssetIn(key="articles")}  # Phụ thuộc raw_articles
 )
-def embedded_articles(context, summarized_article: Dict) -> Output[Dict]:
-    """Embed bài báo đã tóm tắt và lưu vào Qdrant."""
+def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
+    """Embed bài báo từ raw content và lưu vào Qdrant."""
     logger = get_dagster_logger()
     article_id = context.partition_key
 
+    # Lấy bài báo từ raw_articles
+    article = raw_articles[raw_articles['link'] == article_id]
+    if article.empty:
+        logger.error(f"Không tìm thấy bài báo với ID {article_id}")
+        return Output(value={}, metadata={"num_articles": 0})
+
+    article = article.iloc[0]
     try:
-        article_model = EmbeddedArticle(**summarized_article)
-        if not article_model.summary:
-            raise ValueError(f"Bài báo {article_model.link} thiếu tóm tắt")
+        article_model = Article(
+            source=article["source"],
+            topic=article["topic"],
+            title=article["title"],
+            link=article["link"],
+            image=article.get("image", None),
+            published=article["published"],
+            content=article["content"]
+        )
 
-        # Kiểm tra xem bài báo có tồn tại trong MongoDB không
-        mongo_io_manager = context.resources.mongo_io_manager
-        doc = mongo_io_manager.collection.find_one({"link": article_model.link})
-        if not doc:
-            mongo_io_manager.collection.insert_one(article_model.dict())
-            logger.info(f"Đã chèn bài báo {article_model.link} vào MongoDB")
-        elif not doc.get("summary"):
-            mongo_io_manager.collection.update_one(
-                {"link": article_model.link},
-                {"$set": {"summary": article_model.summary}},
-                upsert=True
-            )
-            logger.info(f"Đã cập nhật tóm tắt cho bài báo {article_model.link} trong MongoDB")
+        # Đảm bảo bài báo có trong MongoDB
+        ensure_mongo_record(context.resources.mongo_io_manager, article_model)
 
-        # Làm sạch, chia nhỏ và tạo embedding
+        # Làm sạch và chia nhỏ nội dung
         cleaned_content = clean_text(article_model.content)
         chunks = chunk_text(cleaned_content)
         if not chunks:
             logger.warning(f"Không tạo được đoạn nào cho {article_model.link}")
-            return Output(value=article_model.dict(), metadata={"num_articles": 0})
+            return Output(value={}, metadata={"num_articles": 0})
 
+        # Tạo embedding
         embeddings = generate_embedding([chunks])[0]
-        article_model.embeddings = embeddings
+        if not embeddings:
+            logger.warning(f"Không tạo được embedding cho {article_model.link}")
+            return Output(value={}, metadata={"num_articles": 0})
 
-        logger.info(f"Đã tạo embedding cho bài báo {article_model.link}")
+        # Lưu embedding vào Qdrant
+        context.resources.qdrant_io_manager.store_embedding(
+            point_id=str(article_model.link),
+            vector=embeddings[0],  # Lấy embedding đầu tiên
+            payload={
+                "source": article_model.source,
+                "topic": article_model.topic,
+                "title": article_model.title,
+            }
+        )
+
+        logger.info(f"Đã tạo và lưu embedding cho bài báo {article_model.link}")
+        embedded_article = EmbeddedArticle(**article_model.dict(), embeddings=embeddings)
         return Output(
-            value=article_model.dict(),
+            value=embedded_article.dict(),
             metadata={
                 "num_articles": 1,
                 "sample_embedding": embeddings[0][:5] if embeddings else None

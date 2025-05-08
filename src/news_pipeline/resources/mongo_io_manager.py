@@ -16,21 +16,26 @@ class MongoDBIOManager(IOManager):
     def __init__(self, config):
         self._config = config
 
-    def _get_collection(self, context):
+    def _get_collection(self, context, collection_name: str = None):
         db_name = self._config["database"]
-        collection_name = "Articles" if context.asset_key.path[-1] in ["articles", "synced_articles", "summarized_articles"] else context.asset_key.path[-1]
+        # Use provided collection_name if specified, otherwise derive from context
+        resolved_collection_name = (
+            collection_name
+            if collection_name
+            else "Articles" if context.asset_key.path[-1] in ["articles", "synced_articles", "summarized_articles"] else context.asset_key.path[-1]
+        )
         client = MongoClient(self._config["uri"])
         db = client[db_name]
 
-        if collection_name not in db.list_collection_names():
-            db.create_collection(collection_name)
-            print(f"Created new collection: {collection_name}")
-            collection = db[collection_name]
-            if collection_name == "Articles":
+        if resolved_collection_name not in db.list_collection_names():
+            db.create_collection(resolved_collection_name)
+            print(f"Created new collection: {resolved_collection_name}")
+            collection = db[resolved_collection_name]
+            if resolved_collection_name == "Articles":
                 collection.create_index("link", unique=True)
             else:
                 collection.create_index("name", unique=True)
-        return db[collection_name]
+        return db[resolved_collection_name]
 
     def handle_output(self, context: OutputContext, obj: pd.DataFrame):
         collection = self._get_collection(context)

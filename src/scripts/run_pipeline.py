@@ -11,6 +11,7 @@ from src.news_pipeline.resources.mongo_io_manager import MongoDBIOManager
 from src.news_pipeline.resources.qdrant_io_manager import QdrantIOManager
 import os
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ def initialize_partitions(instance: DagsterInstance):
     mongo_io_manager = MongoDBIOManager(mongo_config)
     
     # Fetch all article links from MongoDB
-    collection = mongo_io_manager._get_collection(None)  # Context is None for manual query
+    collection = mongo_io_manager._get_collection(None)
     articles = collection.find({}, {"link": 1})
     links = [article["link"] for article in articles]
     
@@ -50,39 +51,71 @@ def main():
     # Initialize Dagster instance
     instance = DagsterInstance.get()
     
-    # Initialize partitions
-    initialize_partitions(instance)
-
     # Load assets
     all_assets = load_assets_from_modules([assets])
 
-    # Define run config for partitioned execution
-    run_config = RunConfig(
-        ops={"synchronized_articles": {}}  # No specific op config needed
-    )
+    while True:
+        # Materialize raw_articles to ensure we have the latest articles
+        raw_articles_result = materialize(
+            assets=all_assets,
+            selection=AssetSelection.keys("articles"),
+            run_config=RunConfig(),
+            resources={
+                "mongo_io_manager": MongoDBIOManager({
+                    "uri": os.getenv("MONGO_URI"),
+                    "database": os.getenv("MONGO_DB")
+                }),
+                "qdrant_io_manager": QdrantIOManager({
+                    "url": os.getenv("QDRANT_URL"),
+                    "api_key": os.getenv("QDRANT_API_KEY")
+                }),
+            },
+            instance=instance
+        )
 
-    # Execute pipeline
-    result = materialize(
-        assets=all_assets,
-        selection=AssetSelection.all(),  # Select all assets
-        run_config=run_config,
-        resources={
-            "mongo_io_manager": MongoDBIOManager({
-                "uri": os.getenv("MONGO_URI"),
-                "database": os.getenv("MONGO_DB")
-            }),
-            "qdrant_io_manager": QdrantIOManager({
-                "url": os.getenv("QDRANT_URL"),
-                "api_key": os.getenv("QDRANT_API_KEY")
-            }),
-        },
-        instance=instance
-    )
+        if not raw_articles_result.success:
+            print("Failed to materialize raw_articles!")
+        else:
+            print("Successfully materialized raw_articles!")
+            initialize_partitions(instance)
 
-    if result.success:
-        print("Pipeline executed successfully!")
-    else:
-        print("Pipeline failed!")
+            # Materialize all partitions
+            partitions = instance.get_dynamic_partitions("article_partitions")
+            if partitions:
+                for partition in partitions:
+                    result = materialize(
+                        assets=all_assets,
+                        selection=AssetSelection.keys("summarized_articles", "embedded_articles", "synced_articles", "qdrant_embeddings"),
+                        run_config=RunConfig(
+                            ops={
+                                "summarized_articles": {},
+                                "embedded_articles": {},
+                                "synced_articles": {}
+                            }
+                        ),
+                        partition_key=partition,
+                        resources={
+                            "mongo_io_manager": MongoDBIOManager({
+                                "uri": os.getenv("MONGO_URI"),
+                                "database": os.getenv("MONGO_DB")
+                            }),
+                            "qdrant_io_manager": QdrantIOManager({
+                                "url": os.getenv("QDRANT_URL"),
+                                "api_key": os.getenv("QDRANT_API_KEY")
+                            }),
+                        },
+                        instance=instance
+                    )
+
+                    if result.success:
+                        print(f"Successfully materialized partition: {partition}")
+                    else:
+                        print(f"Failed to materialize partition: {partition}")
+            else:
+                print("No partitions to materialize!")
+
+        # Chờ 5 phút trước khi chạy lại
+        time.sleep(300)  # 300 giây = 5 phút
 
 if __name__ == "__main__":
     main()
