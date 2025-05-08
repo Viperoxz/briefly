@@ -5,6 +5,7 @@ from dagster import (
     RunConfig,
     AssetSelection,
     DagsterInstance,
+    multiprocess_executor
 )
 from src.news_pipeline import assets
 from src.news_pipeline.resources.mongo_io_manager import MongoDBIOManager

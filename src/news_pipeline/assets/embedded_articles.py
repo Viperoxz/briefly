@@ -6,7 +6,6 @@ from ..models.article import Article
 import pandas as pd
 from typing import Dict
 
-# Định nghĩa phân vùng động cho bài báo
 article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
@@ -21,12 +20,12 @@ def ensure_mongo_record(mongo_io_manager, article_model):
 
 @asset(
     key="embedded_articles",
-    io_manager_key="qdrant_io_manager",
+    io_manager_key="mongo_io_manager",  # Sử dụng mongo_io_manager thay vì qdrant_io_manager
     partitions_def=article_partitions_def,
-    ins={"raw_articles": AssetIn(key="articles")}  # Phụ thuộc raw_articles
+    ins={"raw_articles": AssetIn(key="articles")}
 )
-def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
-    """Embed bài báo từ raw content và lưu vào Qdrant."""
+def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFrame]:
+    """Embed bài báo từ raw content, lưu vào MongoDB và Qdrant."""
     logger = get_dagster_logger()
     article_id = context.partition_key
 
@@ -34,7 +33,7 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
     article = raw_articles[raw_articles['link'] == article_id]
     if article.empty:
         logger.error(f"Không tìm thấy bài báo với ID {article_id}")
-        return Output(value={}, metadata={"num_articles": 0})
+        return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
     article = article.iloc[0]
     try:
@@ -56,13 +55,13 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
         chunks = chunk_text(cleaned_content)
         if not chunks:
             logger.warning(f"Không tạo được đoạn nào cho {article_model.link}")
-            return Output(value={}, metadata={"num_articles": 0})
+            return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
         # Tạo embedding
         embeddings = generate_embedding([chunks])[0]
         if not embeddings:
             logger.warning(f"Không tạo được embedding cho {article_model.link}")
-            return Output(value={}, metadata={"num_articles": 0})
+            return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
         # Lưu embedding vào Qdrant
         context.resources.qdrant_io_manager.store_embedding(
@@ -75,10 +74,22 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
             }
         )
 
+        # Lưu embeddings vào MongoDB
+        context.resources.mongo_io_manager.collection.update_one(
+            {"link": article_model.link},
+            {"$set": {"embeddings": embeddings}},
+            upsert=True
+        )
+
         logger.info(f"Đã tạo và lưu embedding cho bài báo {article_model.link}")
         embedded_article = EmbeddedArticle(**article_model.dict(), embeddings=embeddings)
+        
+        # Chuyển đổi thành DataFrame
+        df = pd.DataFrame([embedded_article.dict()])
+        logger.info(f"Returning DataFrame: {df}")
+
         return Output(
-            value=embedded_article.dict(),
+            value=df,
             metadata={
                 "num_articles": 1,
                 "sample_embedding": embeddings[0][:5] if embeddings else None
@@ -87,4 +98,4 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[Dict]:
 
     except Exception as e:
         logger.error(f"Lỗi khi xử lý bài báo {article_id}: {e}")
-        return Output(value={}, metadata={"num_articles": 0})
+        return Output(value=pd.DataFrame(), metadata={"num_articles": 0})

@@ -8,6 +8,7 @@ from dagster import (
     sensor,
     SkipReason,
     AssetSelection,
+    multiprocess_executor
 )
 from .assets.rss_feeds import rss_feed_list
 from .assets.sources_and_topics import sources, topics
@@ -67,7 +68,9 @@ def article_sensor(context):
         return SkipReason("No articles found in MongoDB")
 
     # Thêm partition mới
-    partitions_to_add = new_links - set(existing_partitions)
+    MAX_PARTITIONS_PER_RUN = 7
+    partitions_to_add = list(new_links - set(existing_partitions))[:MAX_PARTITIONS_PER_RUN]
+    # partitions_to_add = new_links - set(existing_partitions)
     for partition in partitions_to_add:
         context.instance.add_dynamic_partitions("article_partitions", [partition])
         context.log.info(f"Added partition: {partition}")
@@ -120,5 +123,8 @@ defs = Definitions(
         "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG),
     },
     sensors=[article_sensor],
-    schedules=[raw_articles_schedule, check_summary_schedule]
+    schedules=[raw_articles_schedule, check_summary_schedule],
+    executor=multiprocess_executor.configured(
+        {"max_concurrent": 4}  
+    )
 )

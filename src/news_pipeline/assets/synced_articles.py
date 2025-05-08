@@ -1,4 +1,4 @@
-from dagster import multi_asset, AssetOut, Output, get_dagster_logger, DynamicPartitionsDefinition
+from dagster import multi_asset, AssetOut, Output, get_dagster_logger, DynamicPartitionsDefinition, AssetIn
 import pandas as pd
 from ..utils.embedding import clean_text, chunk_text, generate_embedding
 from ..models.summarized_article import SummarizedArticle
@@ -10,24 +10,69 @@ from typing import Dict
         "qdrant_embeddings": AssetOut(io_manager_key="qdrant_io_manager"),
     },
     partitions_def=DynamicPartitionsDefinition(name="article_partitions"),
-    deps=["summarized_articles", "embedded_articles"],
+    ins={
+        "summarized_articles": AssetIn(key="summarized_articles"),
+        "embedded_articles": AssetIn(key="embedded_articles"),
+    },
 )
 def synced_articles(context, summarized_articles: pd.DataFrame, embedded_articles: pd.DataFrame):
     """Synchronize MongoDB and Qdrant after summarization and embedding."""
     logger = get_dagster_logger()
     partition_key = context.partition_key
 
+    # Log để debug kiểu dữ liệu của input
+    logger.info(f"Type of embedded_articles: {type(embedded_articles)}, Content: {embedded_articles}")
+    logger.info(f"Type of summarized_articles: {type(summarized_articles)}, Content: {summarized_articles}")
+
     # Check summarized article
     summarized_article = summarized_articles[summarized_articles["link"] == partition_key]
     if summarized_article.empty:
         logger.warning(f"Không tìm thấy bài báo tóm tắt cho {partition_key}")
-        return {
-            "synced_articles": Output(value=pd.DataFrame(), metadata={"status": "skipped"}),
-            "qdrant_embeddings": Output(value=None, metadata={"status": "skipped"}),
-        }
+        yield Output(
+            value=pd.DataFrame(),
+            output_name="synced_articles",
+            metadata={"status": "skipped"}
+        )
+        yield Output(
+            value=None,
+            output_name="qdrant_embeddings",
+            metadata={"status": "skipped"}
+        )
+        return
 
     summarized_article = summarized_article.iloc[0]
-    article_model = SummarizedArticle(**summarized_article.to_dict())
+    article_dict = summarized_article.to_dict()
+
+    # Kiểm tra xem có trường summary không
+    if "summary" not in article_dict or not article_dict["summary"]:
+        logger.error(f"Bài báo {partition_key} thiếu trường summary")
+        yield Output(
+            value=pd.DataFrame(),
+            output_name="synced_articles",
+            metadata={"status": "skipped", "error": "Missing summary"}
+        )
+        yield Output(
+            value=None,
+            output_name="qdrant_embeddings",
+            metadata={"status": "skipped"}
+        )
+        return
+
+    try:
+        article_model = SummarizedArticle(**article_dict)
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo SummarizedArticle cho {partition_key}: {e}")
+        yield Output(
+            value=pd.DataFrame(),
+            output_name="synced_articles",
+            metadata={"status": "skipped", "error": str(e)}
+        )
+        yield Output(
+            value=None,
+            output_name="qdrant_embeddings",
+            metadata={"status": "skipped"}
+        )
+        return
 
     # Check embedding in Qdrant
     qdrant_points = context.resources.qdrant_io_manager.load_input(context)
@@ -48,6 +93,13 @@ def synced_articles(context, summarized_articles: pd.DataFrame, embedded_article
                 }
             )
             logger.info(f"Tạo lại embedding cho {partition_key} trong Qdrant")
+
+            # Lưu embeddings vào MongoDB để đảm bảo đồng bộ
+            context.resources.mongo_io_manager.collection.update_one(
+                {"link": article_model.link},
+                {"$set": {"embeddings": embeddings}},
+                upsert=True
+            )
         except Exception as e:
             logger.error(f"Lỗi khi tạo embedding cho {partition_key}: {e}")
 
@@ -68,13 +120,14 @@ def synced_articles(context, summarized_articles: pd.DataFrame, embedded_article
             )
             logger.info(f"Xóa embedding không đồng bộ: {point.id}")
 
-    return {
-        "synced_articles": Output(
-            value=pd.DataFrame([article_model.dict()]),
-            metadata={"num_articles": 1}
-        ),
-        "qdrant_embeddings": Output(
-            value=None,
-            metadata={"num_synced": 1}
-        ),
-    }
+    # Yield final outputs
+    yield Output(
+        value=pd.DataFrame([article_model.dict()]),
+        output_name="synced_articles",
+        metadata={"num_articles": 1}
+    )
+    yield Output(
+        value=None,
+        output_name="qdrant_embeddings",
+        metadata={"num_synced": 1}
+    )
