@@ -16,24 +16,48 @@ def connect_mongo(config):
 class MongoDBIOManager(IOManager):
     def __init__(self, config):
         self._config = config
-        self.client = MongoClient(self._config["uri"])
-        self.db = self.client[self._config["database"]]
+        self._client = MongoClient(self._config["uri"])
+        self.db = self._client[self._config["database"]]
+        self._initialize_collections()
+
+    def _initialize_collections(self):
+        """Initialize collections and manage indexes."""
+        collections = ["articles", "summarized_articles", "synced_articles", "embedded_articles", "sources", "topics", "checked_summaries", "clean_orphaned_embeddings"]
+        for coll_name in collections:
+            if coll_name not in self.db.list_collection_names():
+                self.db.create_collection(coll_name)
+            collection = self.db[coll_name]
+            if coll_name == "articles":
+                # Drop existing name_1 index and create unique index on link
+                if "name_1" in collection.index_information():
+                    collection.drop_index("name_1")
+                collection.create_index("link", unique=True)
+            elif coll_name in ["sources", "topics"]:
+                collection.create_index("name", unique=True)
+            else:
+                # Ensure no unintended indexes (e.g., name_1) exist on other collections
+                if "name_1" in collection.index_information():
+                    collection.drop_index("name_1")
 
     def _get_collection(self, context, collection_name: str = None):
-        # Use provided collection_name if specified, otherwise derive from context
-        resolved_collection_name = (
-            collection_name
-            if collection_name
-            else "Articles" if context.asset_key.path[-1] in ["articles", "synced_articles", "summarized_articles"] else context.asset_key.path[-1]
-        )
+        if collection_name:
+            resolved_collection_name = collection_name
+        elif hasattr(context, 'asset_key_for_output'):
+            outs = context.op_config.get("outs", {}) if context.op_config else {}
+            output_name = list(outs.keys())[0] if outs else "embedded_articles"
+            resolved_collection_name = context.asset_key_for_output(output_name).path[-1]
+        elif hasattr(context, 'asset_key'):
+            resolved_collection_name = context.asset_key.path[-1]
+        else:
+            resolved_collection_name = "articles"
 
         if resolved_collection_name not in self.db.list_collection_names():
             self.db.create_collection(resolved_collection_name)
             context.log.info(f"Created new collection: {resolved_collection_name}")
             collection = self.db[resolved_collection_name]
-            if resolved_collection_name == "Articles":
+            if resolved_collection_name == "articles":
                 collection.create_index("link", unique=True)
-            else:
+            elif resolved_collection_name in ["sources", "topics"]:
                 collection.create_index("name", unique=True)
         return self.db[resolved_collection_name]
 
@@ -46,22 +70,21 @@ class MongoDBIOManager(IOManager):
             raise ValueError(f"Expected pandas DataFrame, got {type(obj)}")
 
         collection = self._get_collection(context)
-        asset_name = context.asset_key.path[-1]
+        asset_name = context.asset_key.path[-1] if hasattr(context, 'asset_key') else context.asset_key_for_output(list(context.op_config.get("outs", {}).keys())[0]).path[-1] if context.op_config and context.op_config.get("outs") else "embedded_articles"
         records = obj.to_dict(orient="records")
 
         try:
-            if asset_name in ["articles", "synced_articles", "summarized_articles"]:
+            if asset_name in ["articles", "summarized_articles", "synced_articles"]:
                 for record in records:
                     if "link" not in record:
                         context.log.error(f"Record missing 'link' field: {record}")
                         continue
-                    # Kiểm tra summary cho summarized_articles
                     if asset_name == "summarized_articles" and ("summary" not in record or not record["summary"]):
                         context.log.error(f"Record missing or empty 'summary' field: {record}")
                         continue
                     collection.update_one(
                         {"link": record["link"]},
-                        {"$set": record},  # Lưu toàn bộ record
+                        {"$set": record},
                         upsert=True
                     )
             elif asset_name in ["sources", "topics"]:
@@ -91,7 +114,7 @@ class MongoDBIOManager(IOManager):
             if context.has_partition_key:
                 query["link"] = context.partition_key
             docs = list(collection.find(query))
-            context.log.info(f"Loaded {len(docs)} documents for asset {context.asset_key.path[-1]}")
+            context.log.info(f"Loaded {len(docs)} documents for asset {context.asset_key.path[-1] if hasattr(context, 'asset_key') else context.asset_key_for_output(list(context.op_config.get('outs', {}).keys())[0]).path[-1] if context.op_config and context.op_config.get('outs') else 'embedded_articles'}")
             if docs and "_id" in docs[0]:
                 for doc in docs:
                     doc.pop("_id", None)
@@ -103,12 +126,15 @@ class MongoDBIOManager(IOManager):
 
     @property
     def client(self):
-        """Expose MongoClient for use in other resources."""
         return self._client
 
     @client.setter
     def client(self, value):
         self._client = value
+
+    def __del__(self):
+        if hasattr(self, '_client') and self._client:
+            self._client.close()
 
 @io_manager
 def mongo_io_manager():

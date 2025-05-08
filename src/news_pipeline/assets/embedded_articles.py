@@ -4,69 +4,52 @@ from ..utils.embedding import clean_text, chunk_text, generate_embedding
 from ..models.embedded_article import EmbeddedArticle
 from ..models.article import Article
 import pandas as pd
-from typing import Dict
 
 article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-def ensure_mongo_record(mongo_io_manager, article_model):
-    """Ensure article exists in MongoDB with retry logic."""
-    logger = get_dagster_logger()
-    doc = mongo_io_manager.collection.find_one({"link": article_model.link})
-    if not doc:
-        mongo_io_manager.collection.insert_one(article_model.dict())
-        logger.info(f"Đã chèn bài báo {article_model.link} vào MongoDB")
-    return True
-
 @asset(
     key="embedded_articles",
-    io_manager_key="mongo_io_manager",  # Sử dụng mongo_io_manager thay vì qdrant_io_manager
+    io_manager_key="mongo_io_manager",
     partitions_def=article_partitions_def,
     ins={"raw_articles": AssetIn(key="articles")}
 )
 def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFrame]:
-    """Embed bài báo từ raw content, lưu vào MongoDB và Qdrant."""
     logger = get_dagster_logger()
-    article_id = context.partition_key
+    partition_key = context.partition_key
 
-    # Lấy bài báo từ raw_articles
-    article = raw_articles[raw_articles['link'] == article_id]
-    if article.empty:
-        logger.error(f"Không tìm thấy bài báo với ID {article_id}")
+    # Filter articles by partition_key
+    articles = raw_articles[raw_articles['link'] == partition_key]
+    if articles.empty:
+        logger.error(f"No article found with link {partition_key}")
         return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
-    article = article.iloc[0]
+    if len(articles) > 1:
+        logger.warning(f"Multiple articles found for link {partition_key}, using first match")
+    article = articles.iloc[0]
+
     try:
-        article_model = Article(
-            source=article["source"],
-            topic=article["topic"],
-            title=article["title"],
-            link=article["link"],
-            image=article.get("image", None),
-            published=article["published"],
-            content=article["content"]
-        )
+        article_model = Article(**article.to_dict())
 
-        # Đảm bảo bài báo có trong MongoDB
-        ensure_mongo_record(context.resources.mongo_io_manager, article_model)
-
-        # Làm sạch và chia nhỏ nội dung
         cleaned_content = clean_text(article_model.content)
         chunks = chunk_text(cleaned_content)
         if not chunks:
-            logger.warning(f"Không tạo được đoạn nào cho {article_model.link}")
+            logger.warning(f"No chunks generated for {article_model.link}")
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
-        # Tạo embedding
-        embeddings = generate_embedding([chunks])[0]
-        if not embeddings:
-            logger.warning(f"Không tạo được embedding cho {article_model.link}")
+        # Generate embeddings for all chunks and average them
+        embeddings_list = generate_embedding(chunks)
+        if not embeddings_list or not any(embeddings_list):
+            logger.warning(f"No embeddings generated for {article_model.link}")
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
+        
+        # Average embeddings across chunks
+        import numpy as np
+        embeddings = np.mean(embeddings_list, axis=0).tolist() if embeddings_list else None
 
-        # Lưu embedding vào Qdrant
+        # Store embedding in Qdrant
         context.resources.qdrant_io_manager.store_embedding(
             point_id=str(article_model.link),
-            vector=embeddings[0],  # Lấy embedding đầu tiên
+            vector=embeddings,
             payload={
                 "source": article_model.source,
                 "topic": article_model.topic,
@@ -74,28 +57,22 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
             }
         )
 
-        # Lưu embeddings vào MongoDB
+        # Update MongoDB with embeddings
         context.resources.mongo_io_manager.collection.update_one(
             {"link": article_model.link},
             {"$set": {"embeddings": embeddings}},
             upsert=True
         )
 
-        logger.info(f"Đã tạo và lưu embedding cho bài báo {article_model.link}")
+        logger.info(f"Generated embeddings for article {article_model.link}")
         embedded_article = EmbeddedArticle(**article_model.dict(), embeddings=embeddings)
-        
-        # Chuyển đổi thành DataFrame
-        df = pd.DataFrame([embedded_article.dict()])
-        logger.info(f"Returning DataFrame: {df}")
-
+        # Ensure 'link' is explicitly included in the output DataFrame
+        output_data = embedded_article.dict()
+        output_data["link"] = article_model.link  # Explicitly add 'link' if not in dict()
         return Output(
-            value=df,
-            metadata={
-                "num_articles": 1,
-                "sample_embedding": embeddings[0][:5] if embeddings else None
-            }
+            value=pd.DataFrame([output_data]),
+            metadata={"num_articles": 1}
         )
-
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý bài báo {article_id}: {e}")
+        logger.error(f"Error processing article {partition_key}: {str(e)} - Article data: {article.to_dict()}")
         return Output(value=pd.DataFrame(), metadata={"num_articles": 0})

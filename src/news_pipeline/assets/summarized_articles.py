@@ -1,73 +1,59 @@
-from dagster import asset, get_dagster_logger, Output, DynamicPartitionsDefinition, AssetIn
-from ..utils.summarization import summarize_content
-from ..models.summarized_article import SummarizedArticle
-from ..models.article import Article
+from dagster import asset, get_dagster_logger, Output, AssetIn, DynamicPartitionsDefinition
 import pandas as pd
-from typing import Dict
-
-# Định nghĩa phân vùng động cho bài báo
-article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
+import os
+from groq import Groq
+from ..resources.qdrant_io_manager import QdrantIOManager
 
 @asset(
     key="summarized_articles",
     io_manager_key="mongo_io_manager",
-    partitions_def=article_partitions_def,
-    ins={"articles": AssetIn(key="articles")}
+    ins={"articles": AssetIn(key="articles")},
+    partitions_def=DynamicPartitionsDefinition(name="article_partitions")
 )
 def summarized_articles(context, articles: pd.DataFrame) -> Output[pd.DataFrame]:
-    """Summarize bài báo từ raw content và lưu vào MongoDB."""
     logger = get_dagster_logger()
-    article_id = context.partition_key
+    # Initialize Groq client without the model parameter
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    # Lấy bài báo từ articles
-    article = articles[articles['link'] == article_id]
-    if article.empty:
-        logger.error(f"Không tìm thấy bài báo với ID {article_id}")
-        return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
+    if articles.empty:
+        logger.warning("No articles to summarize")
+        return Output(value=pd.DataFrame(), metadata={"num_summarized": 0})
 
-    article = article.iloc[0]
-    try:
-        article_model = Article(
-            source=article["source"],
-            topic=article["topic"],
-            title=article["title"],
-            link=article["link"],
-            image=article.get("image", None),
-            published=article["published"],
-            content=article["content"]
-        )
+    summarized_data = []
+    partition_key = context.partition_key
 
-        # Tóm tắt nội dung
+    for _, row in articles[articles["link"] == partition_key].iterrows():
         try:
-            # Truyền mongo_client từ resources
-            summary = summarize_content(
-                article_model.content,
-                mongo_client=context.resources.mongo_io_manager.client
+            content = row["content"]
+            response = client.chat.completions.create(
+                messages=[{"role": "user", "content": f"Summarize this article: {content}"}],
+                model=os.getenv("GROQ_MODEL_ID"),  # Move model parameter here
             )
-        except ValueError as e:
-            logger.error(f"Không tạo được tóm tắt cho {article_model.link}: {e}")
-            return Output(value=pd.DataFrame(), metadata={"num_articles": 0, "error": str(e)})
+            summary = response.choices[0].message.content
+            summarized_data.append({
+                "link": row["link"],
+                "summary": summary,
+                "source": row["source"],
+                "topic": row["topic"],
+                "title": row["title"],
+                "published": row["published"],
+                "image": row["image"]
+            })
+            logger.info(f"✅ Summarized article: {row['link']}")
+        except Exception as e:
+            logger.error(f"❌ Failed to summarize {row['link']}: {e}")
+            summarized_data.append({
+                "link": row["link"],
+                "summary": None,
+                "source": row["source"],
+                "topic": row["topic"],
+                "title": row["title"],
+                "published": row["published"],
+                "image": row["image"]
+            })
 
-        summarized_article = SummarizedArticle(
-            **article_model.dict(), summary=summary
-        )
-
-        # Lưu vào MongoDB
-        context.resources.mongo_io_manager.collection.update_one(
-            {"link": article_model.link},
-            {"$set": summarized_article.dict()},
-            upsert=True
-        )
-
-        logger.info(f"Đã tóm tắt và lưu bài báo {article_model.link} với summary: {summary[:50]}...")
-        df = pd.DataFrame([summarized_article.dict()])
-        logger.info(f"Returning DataFrame: {df}")
-
-        return Output(
-            value=df,
-            metadata={"num_articles": 1}
-        )
-
-    except Exception as e:
-        logger.error(f"Lỗi khi xử lý bài báo {article_id}: {e}")
-        return Output(value=pd.DataFrame(), metadata={"num_articles": 0, "error": str(e)})
+    df = pd.DataFrame(summarized_data)
+    return Output(
+        value=df,
+        metadata={"num_summarized": len(df)}
+    )

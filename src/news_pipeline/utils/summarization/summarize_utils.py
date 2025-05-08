@@ -33,7 +33,7 @@ async def summarize_content_async(content: str, mongo_client: MongoClient = None
                 messages=[
                     {
                         "role": "system",
-                        "content": "Summarize the following news article into 4 concise points in Vietnamese. Each point should be a short or medium sentence."
+                        "content": "Summarize the following news article into 4 concise points in Vietnamese. Each point should be a short or medium sentence. Do not include any other information."
                     },
                     {"role": "user", "content": content}
                 ],
