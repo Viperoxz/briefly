@@ -1,6 +1,7 @@
 import pandas as pd
 from dagster import asset, Output
-from ..utils.extraction import slugify, alias_from_topic
+from ..utils.extraction import slugify
+
 
 @asset(
     key="sources",
@@ -24,6 +25,7 @@ def sources(rss_feed_list: dict) -> Output[pd.DataFrame]:
         }
     )
 
+
 @asset(
     key="topics",
     io_manager_key="mongo_io_manager"
@@ -35,7 +37,7 @@ def topics(rss_feed_list: dict) -> Output[pd.DataFrame]:
         topic_set.update(source.keys())
 
     topics = [
-        {"name": topic, "alias": alias_from_topic(topic)}
+        {"name": topic, "alias": slugify(topic)}
         for topic in sorted(topic_set)
     ]
 
