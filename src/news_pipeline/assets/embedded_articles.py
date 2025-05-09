@@ -18,13 +18,13 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
     partition_key = context.partition_key
 
     # Filter articles by partition_key
-    articles = raw_articles[raw_articles['link'] == partition_key]
+    articles = raw_articles[raw_articles['url'] == partition_key]
     if articles.empty:
-        logger.error(f"No article found with link {partition_key}")
+        logger.error(f"No article found with url {partition_key}")
         return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
     if len(articles) > 1:
-        logger.warning(f"Multiple articles found for link {partition_key}, using first match")
+        logger.warning(f"Multiple articles found for url {partition_key}, using first match")
     article = articles.iloc[0]
 
     try:
@@ -33,13 +33,13 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
         cleaned_content = clean_text(article_model.content)
         chunks = chunk_text(cleaned_content)
         if not chunks:
-            logger.warning(f"No chunks generated for {article_model.link}")
+            logger.warning(f"No chunks generated for {article_model.url}")
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
 
         # Generate embeddings for all chunks and average them
-        embeddings_list = generate_embedding(chunks)
+        embeddings_list = generate_embedding([chunks])[0]
         if not embeddings_list or not any(embeddings_list):
-            logger.warning(f"No embeddings generated for {article_model.link}")
+            logger.warning(f"No embeddings generated for {article_model.url}")
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
         
         # Average embeddings across chunks
@@ -48,7 +48,7 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
 
         # Store embedding in Qdrant
         context.resources.qdrant_io_manager.store_embedding(
-            point_id=str(article_model.link),
+            point_id=str(article_model.url),
             vector=embeddings,
             payload={
                 "source": article_model.source,
@@ -59,16 +59,16 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
 
         # Update MongoDB with embeddings
         context.resources.mongo_io_manager.collection.update_one(
-            {"link": article_model.link},
+            {"url": article_model.url},
             {"$set": {"embeddings": embeddings}},
             upsert=True
         )
 
-        logger.info(f"Generated embeddings for article {article_model.link}")
+        logger.info(f"Generated embeddings for article {article_model.url}")
         embedded_article = EmbeddedArticle(**article_model.dict(), embeddings=embeddings)
-        # Ensure 'link' is explicitly included in the output DataFrame
+        # Ensure 'url' is explicitly included in the output DataFrame
         output_data = embedded_article.dict()
-        output_data["link"] = article_model.link  # Explicitly add 'link' if not in dict()
+        output_data["url"] = article_model.url
         return Output(
             value=pd.DataFrame([output_data]),
             metadata={"num_articles": 1}

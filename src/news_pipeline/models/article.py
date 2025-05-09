@@ -1,55 +1,57 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
-from pathlib import Path
 import re
+import os
+from pymongo import MongoClient
+from bson import ObjectId
+from dotenv import load_dotenv
 
-base_dir = Path(__file__).resolve().parent.parent.parent.parent
-SOURCES = set()
-with open(base_dir / "config" / "sources", "r", encoding="utf-8") as f:
-    SOURCES.update(line.strip() for line in f if line.strip())
-TOPICS = set()
-with open(base_dir / "config" / "topics", "r", encoding="utf-8") as f:
-    TOPICS.update(line.strip() for line in f if line.strip())
+load_dotenv()
 
 class Article(BaseModel):
-    source: str = Field(..., description="Source of the article")
-    topic: str = Field(..., description="Topic of the article") 
+    id: ObjectId = Field(alias="_id", description="MongoDB ObjectId of the article")
+    source_id: ObjectId = Field(..., description="ID of the article source")
+    topic_id: ObjectId = Field(..., description="ID of the article topic")
     title: str = Field(..., description="Title of the article")
-    link: str = Field(..., description="URL of the article")
-    image: Optional[str] = Field(None, description="URL of the article's image")
-    published: str = Field(..., description="Publication date of the article")
+    url: str = Field(..., description="URL of the article")
+    image: str = Field(..., description="URL of the article's image")
+    published_date: datetime = Field(..., description="Publication date of the article")
     content: str = Field(..., description="Full content of the article")
+    alias: str = Field(..., description="Alias of the article title")
 
-    @field_validator("source")
+    @field_validator("source_id")
     @classmethod
-    def validate_source(cls, v):
-        if v not in SOURCES:
-            raise ValueError(f"Source '{v}' not in allowed sources: {SOURCES}")
+    def validate_source_id(cls, v):
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client[os.getenv("MONGO_DB")]
+        if not db["sources"].find_one({"_id": v}):
+            raise ValueError(f"Source ID '{v}' not found in sources collection")
         return v
 
-    @field_validator("topic")
+    @field_validator("topic_id")
     @classmethod
-    def validate_topic(cls, v):
-        if v not in TOPICS:
-            raise ValueError(f"Topic '{v}' not in allowed topics: {TOPICS}")
+    def validate_topic_id(cls, v):
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client[os.getenv("MONGO_DB")]
+        if not db["topics"].find_one({"_id": v}):
+            raise ValueError(f"Topic ID '{v}' not found in topics collection")
         return v
 
-    @field_validator("link")
+    @field_validator("url")
     @classmethod
-    def validate_link(cls, v):
+    def validate_url(cls, v):
         url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
         if not re.match(url_pattern, v):
-            raise ValueError(f"Invalid URL for link: {v}")
+            raise ValueError(f"Invalid URL for url: {v}")
         return v
 
-    @field_validator("image", mode='before')
+    @field_validator("image")
     @classmethod
     def validate_image(cls, v):
-        if v is not None:
-            url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
-            if not re.match(url_pattern, v):
-                raise ValueError(f"Invalid URL for image: {v}")
+        url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+        if not re.match(url_pattern, v):
+            raise ValueError(f"Invalid URL for image: {v}")
         return v
 
     @field_validator("content")
@@ -59,5 +61,13 @@ class Article(BaseModel):
             raise ValueError("Content is too short (minimum 50 characters)")
         return v
 
+    @field_validator("alias")
+    @classmethod
+    def validate_alias(cls, v):
+        if not v or len(v.strip()) < 1:
+            raise ValueError("Alias cannot be empty")
+        return v
+
     class Config:
+        arbitrary_types_allowed = True  # Cho phép kiểu ObjectId
         extra = "ignore"

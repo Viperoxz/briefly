@@ -17,32 +17,32 @@ def sync_up(context, summarized_articles: pd.DataFrame, embedded_articles: pd.Da
     logger = get_dagster_logger()
     partition_key = context.partition_key
 
-    # Check for 'link' column in summarized_articles
-    if "link" not in summarized_articles.columns:
-        logger.error(f"❌ Missing 'link' column in summarized_articles for partition {partition_key}")
+    # Check for 'url' column in summarized_articles
+    if "url" not in summarized_articles.columns:
+        logger.error(f"❌ Missing 'url' column in summarized_articles for partition {partition_key}")
         return (
             Output(value=pd.DataFrame(), metadata={"num_synced": 0}),
             Output(value=pd.DataFrame(), metadata={"num_embeddings": 0})
         )
     
-    # Check for 'link' column in embedded_articles
-    if "link" not in embedded_articles.columns:
-        logger.error(f"❌ Missing 'link' column in embedded_articles for partition {partition_key}")
+    # Check for 'url' column in embedded_articles
+    if "url" not in embedded_articles.columns:
+        logger.error(f"❌ Missing 'url' column in embedded_articles for partition {partition_key}")
         return (
             Output(value=pd.DataFrame(), metadata={"num_synced": 0}),
             Output(value=pd.DataFrame(), metadata={"num_embeddings": 0})
         )
 
-    summarized_article = summarized_articles[summarized_articles["link"] == partition_key]
+    summarized_article = summarized_articles[summarized_articles["url"] == partition_key]
     has_summary = not summarized_article.empty and "summary" in summarized_article.iloc[0] and summarized_article.iloc[0]["summary"]
 
-    embedded_article = embedded_articles[embedded_articles["link"] == partition_key]
+    embedded_article = embedded_articles[embedded_articles["url"] == partition_key]
     has_embedding = not embedded_article.empty and "embeddings" in embedded_article.iloc[0] and embedded_article.iloc[0]["embeddings"]
 
     if not has_summary or not has_embedding:
         logger.warning(f"Article {partition_key} not ready for sync")
         context.resources.mongo_io_manager.collection.update_one(
-            {"link": partition_key},
+            {"url": partition_key},
             {"$set": {"sync_status": "pending"}},
             upsert=True
         )
@@ -63,7 +63,7 @@ def sync_up(context, summarized_articles: pd.DataFrame, embedded_articles: pd.Da
     article_model = SummarizedArticle(**article_dict)
 
     context.resources.mongo_io_manager.collection.update_one(
-        {"link": article_model.link},
+        {"url": article_model.url},
         {"$set": {"sync_status": "synced"}},
         upsert=True
     )

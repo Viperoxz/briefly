@@ -3,7 +3,7 @@ class Settings:
     # Model settings
     EMBEDDING_MODEL_ID = 'dangvantuan/vietnamese-document-embedding'
     EMBEDDING_MODEL_MAX_INPUT_LENGTH = 2048  # Reduced from 8096 for safety
-    EMBEDDING_VECTOR_SIZE = 768  # Vector size for vietnamese-document-embedding
+    EMBEDDING_VECTOR_SIZE = 384  # Vector size for vietnamese-document-embedding
 
     # Chunking settings
     CHUNK_SIZE = 1500  # Characters

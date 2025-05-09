@@ -8,7 +8,7 @@ import pandas as pd
 def clean_orphaned_embeddings(context, synced_articles: pd.DataFrame):
     logger = get_dagster_logger()
 
-    mongo_links = set(synced_articles["link"])
+    mongo_links = set(synced_articles["url"])
     qdrant_points = context.resources.qdrant_io_manager.load_input(context)
     qdrant_ids = {point.id for point in qdrant_points}
 

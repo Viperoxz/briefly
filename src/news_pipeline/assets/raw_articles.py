@@ -40,7 +40,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
             success_count = 0
             failure_count = 0
 
-            for entry in feed.entries[:100]:
+            for entry in feed.entries[:1]:
                 try:
                     # Check if article already exists
                     article_url = entry.link

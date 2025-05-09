@@ -21,6 +21,9 @@ from .assets.clean_orphaned_embeddings import clean_orphaned_embeddings
 from .resources.mongo_io_manager import MongoDBIOManager
 from .resources.qdrant_io_manager import QdrantIOManager
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
@@ -36,8 +39,8 @@ QDRANT_CONFIG = {
 
 raw_articles_job = define_asset_job(
     name="raw_articles_job",
-    selection=["rss_feed_list", "sources", "topics", "articles"],
-    config={"ops": {"raw_articles": {"config": {"save_json": False}}}}
+    selection=["rss_feed_list", "sources", "topics", "articles"], 
+    config={"ops": {"articles": {"config": {"save_json": False}}}}
 )
 
 sync_job = define_asset_job(
@@ -60,20 +63,20 @@ clean_orphaned_job = define_asset_job(
 def article_sensor(context):
     existing_partitions = context.instance.get_dynamic_partitions("article_partitions")
     mongo_io_manager = MongoDBIOManager(MONGO_CONFIG)
-    collection = mongo_io_manager._get_collection(context, collection_name="articles")
-    articles = collection.find({}, {"link": 1})
-    new_links = set(article["link"] for article in articles if article.get("link"))
+    collection = mongo_io_manager.get_collection_by_name(collection_name="articles")
+    articles = collection.find({}, {"url": 1})
+    new_urls = set(article["url"] for article in articles if article.get("url"))
 
-    if not new_links:
+    if not new_urls:
         return SkipReason("No articles found in MongoDB")
 
     MAX_PARTITIONS_PER_RUN = 7
-    partitions_to_add = list(new_links - set(existing_partitions))[:MAX_PARTITIONS_PER_RUN]
+    partitions_to_add = list(new_urls - set(existing_partitions))[:MAX_PARTITIONS_PER_RUN]
     for partition in partitions_to_add:
         context.instance.add_dynamic_partitions("article_partitions", [partition])
         context.log.info(f"Added partition: {partition}")
 
-    partitions_to_remove = set(existing_partitions) - new_links
+    partitions_to_remove = set(existing_partitions) - new_urls
     for partition in partitions_to_remove:
         context.instance.delete_dynamic_partition("article_partitions", partition)
         context.log.info(f"Removed partition: {partition}")
@@ -91,19 +94,26 @@ def article_sensor(context):
 @sensor(job=sync_job, minimum_interval_seconds=60)
 def sync_sensor(context):
     mongo_io_manager = MongoDBIOManager(MONGO_CONFIG)
-    collection = mongo_io_manager._get_collection(context, collection_name="articles")
+    collection = mongo_io_manager.get_collection_by_name(collection_name="articles")
     articles = collection.find(
-        {"summary": {"$exists": True}, "embeddings": {"$exists": True}},
-        {"link": 1}
+        {
+            "summary": {"$exists": True, "$ne": None},
+            "embeddings": {"$exists": True, "$ne": []},
+            "source_id": {"$exists": True},
+            "topic_id": {"$exists": True},
+            "alias": {"$exists": True},
+            "image": {"$exists": True}
+        },
+        {"url": 1}
     )
-    ready_links = set(article["link"] for article in articles)
+    ready_urls = set(article["url"] for article in articles if article.get("url"))
 
-    if not ready_links:
+    if not ready_urls:
         return SkipReason("No articles ready for sync")
 
     existing_partitions = context.instance.get_dynamic_partitions("article_partitions")
     MAX_PARTITIONS_PER_RUN = 10
-    partitions_to_sync = list(ready_links & set(existing_partitions))[:MAX_PARTITIONS_PER_RUN]
+    partitions_to_sync = list(ready_urls & set(existing_partitions))[:MAX_PARTITIONS_PER_RUN]
 
     for partition in partitions_to_sync:
         yield RunRequest(
@@ -111,17 +121,17 @@ def sync_sensor(context):
             partition_key=partition
         )
 
-@sensor(job=sync_job, minimum_interval_seconds=3600)  # Run every hour
+@sensor(job=clean_orphaned_job, minimum_interval_seconds=3600)  # Run every hour
 def cleanup_sensor(context):
     mongo_io_manager = MongoDBIOManager(MONGO_CONFIG)
-    collection = mongo_io_manager._get_collection(context, collection_name="synced_articles")
+    collection = mongo_io_manager.get_collection_by_name(collection_name="synced_articles")
     result = collection.delete_many({"sync_status": "pending"})
     context.log.info(f"Deleted {result.deleted_count} pending records from synced_articles collection")
 
 raw_articles_schedule = ScheduleDefinition(
     job=raw_articles_job,
     cron_schedule="*/3 * * * *",
-    run_config={"ops": {"raw_articles": {"config": {"save_json": False}}}}
+    run_config={"ops": {"articles": {"config": {"save_json": False}}}}
 )
 
 check_summary_schedule = ScheduleDefinition(

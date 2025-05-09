@@ -36,22 +36,22 @@ def checked_summaries(context, summarized_articles: pd.DataFrame):
     for article in articles:
         try:
             if len(article.get("summary", "")) < 1:
-                logger.warning(f"Tóm tắt quá ngắn cho bài báo {article.get('link', 'unknown')}")
+                logger.warning(f"Tóm tắt quá ngắn cho bài báo {article.get('url', 'unknown')}")
                 collection.update_one(
-                    {"link": article["link"]},
+                    {"url": article["url"]},
                     {"$set": {"summary_status": "failed"}},
                     upsert=True
                 )
             else:
-                logger.info(f"Tóm tắt hợp lệ cho bài báo {article.get('link', 'unknown')}")
+                logger.info(f"Tóm tắt hợp lệ cho bài báo {article.get('url', 'unknown')}")
                 collection.update_one(
-                    {"link": article["link"]},
+                    {"url": article["url"]},
                     {"$set": {"summary_status": "passed"}},
                     upsert=True
                 )
                 checked_articles.append(article)
         except Exception as e:
-            logger.error(f"Lỗi khi kiểm tra tóm tắt cho bài báo {article.get('link', 'unknown')}: {e}")
+            logger.error(f"Lỗi khi kiểm tra tóm tắt cho bài báo {article.get('url', 'unknown')}: {e}")
             continue
 
     if not checked_articles:

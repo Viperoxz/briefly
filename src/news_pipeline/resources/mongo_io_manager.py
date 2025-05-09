@@ -51,7 +51,7 @@ class MongoDBIOManager(IOManager):
                 db = client[self._config["database"]]
                 for record in records:
                     collection.update_one(
-                        {"url": record["url"]},  # match by article url link
+                        {"url": record["url"]},  # match by article url 
                         {"$set": record},
                         upsert=True
                     )
@@ -90,3 +90,24 @@ class MongoDBIOManager(IOManager):
             return pd.DataFrame(docs)
         except Exception as e:
             raise RuntimeError(f"Failed to load data from MongoDB: {e}")
+        
+    def get_collection_by_name(self, collection_name):
+        """Get MongoDB collection by name directly."""
+        db_name = self._config["database"]
+        client = MongoClient(self._config["uri"])
+        db = client[db_name]
+
+        if collection_name not in db.list_collection_names():
+            db.create_collection(collection_name)
+            print(f"Created new collection: {collection_name}")
+            collection = db[collection_name]
+
+            # Create appropriate indexes based on collection type
+            if collection_name == "articles":
+                collection.create_index("url", unique=True)
+            elif collection_name == "topics":
+                collection.create_index("name", unique=True)
+            elif collection_name == "sources":
+                collection.create_index("name", unique=True)
+
+        return db[collection_name]
