@@ -5,6 +5,7 @@ from groq import Groq
 from bson import ObjectId
 from datetime import datetime
 from ..resources.qdrant_io_manager import QdrantIOManager
+from ..models import SummarizedArticle
 
 @asset(
     key="summarized_articles",
@@ -21,6 +22,7 @@ def summarized_articles(context, articles: pd.DataFrame) -> Output[pd.DataFrame]
         return Output(value=pd.DataFrame(), metadata={"num_summarized": 0})
 
     summarized_data = []
+    failed_summaries = 0
     partition_key = context.partition_key
 
     for _, row in articles[articles["url"] == partition_key].iterrows():
@@ -39,26 +41,28 @@ def summarized_articles(context, articles: pd.DataFrame) -> Output[pd.DataFrame]
                 max_tokens=150
             )
             summary = response.choices[0].message.content.strip()
-            if not summary or len(summary) < 15:
-                logger.error(f"Tóm tắt không hợp lệ cho bài báo {row['url']}")
+            if not summary or len(summary) < 1:
+                logger.error(f"Unsuccessful summary for article{row['url']}")
+                failed_summaries += 1
                 continue
 
-            # Đảm bảo các trường khớp với schema
-            summarized_data.append({
-                "_id": row.get("_id", ObjectId()),  # Lấy _id từ raw_articles hoặc tạo mới
-                "url": row["url"],
-                "summary": summary,
-                "source_id": row["source_id"],
-                "topic_id": row["topic_id"],
-                "title": row["title"],
-                "published_date": row["published_date"] if isinstance(row["published_date"], datetime) else datetime.fromisoformat(row["published_date"]),
-                "image": row["image"],
-                "content": row["content"],
-                "alias": row["alias"]
-            })
+            summarized_article = SummarizedArticle(
+                url=row["url"],
+                title=row["title"],
+                published_date=row["published_date"],
+                source_id=row["source_id"],
+                topic_id=row["topic_id"],
+                summary=summary
+            )
+            summarized_data.append(summarized_article.model_dump())
             logger.info(f"✅ Summarized article: {row['url']}")
+        except ValueError as ve:
+            logger.error(f"❌ Value error for {row['url']}: {ve}")
+            failed_summaries += 1
+            continue
         except Exception as e:
             logger.error(f"❌ Failed to summarize {row['url']}: {e}")
+            failed_summaries += 1
             continue
 
     df = pd.DataFrame(summarized_data)

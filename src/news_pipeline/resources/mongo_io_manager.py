@@ -19,9 +19,11 @@ class MongoDBIOManager(IOManager):
     def __init__(self, config):
         self._config = config
 
-    def _get_collection(self, context):
+    def _get_collection(self, context, collection_name=None):
+        if not collection_name:
+            collection_name = context.asset_key.path[-1]
+        
         db_name = self._config["database"]
-        collection_name = context.asset_key.path[-1]
         client = MongoClient(self._config["uri"])
         db = client[db_name]
 
@@ -37,12 +39,20 @@ class MongoDBIOManager(IOManager):
                 collection.create_index("name", unique=True)
             elif collection_name == "sources":
                 collection.create_index("name", unique=True)
+            elif collection_name == "summarized_articles":
+                collection.create_index("url", unique=True)
+            elif collection_name == "audio_summaries":
+                collection.create_index("url", unique=True)
 
         return db[collection_name]
 
     def handle_output(self, context: OutputContext, obj: pd.DataFrame):
-        collection = self._get_collection(context)
         asset_name = context.asset_key.path[-1]
+        # Skip MongoDB storage for embedded_articles
+        if asset_name == "embedded_articles":
+            context.log.info("Skipping MongoDB storage for embedded_articles (stored in Qdrant)")
+            return
+        collection = self._get_collection(context, asset_name)
         records = obj.to_dict(orient="records")
 
         try:
@@ -70,6 +80,35 @@ class MongoDBIOManager(IOManager):
                         {"$set": record},
                         upsert=True
                     )
+            elif asset_name == "summarized_articles":
+                for record in records:
+                    collection.update_one(
+                        {"url": record["url"]},  # match by article url
+                        {"$set": {
+                            "url": record["url"],
+                            "title": record["title"],
+                            "published_date": record["published_date"],
+                            "source_id": record["source_id"],
+                            "topic_id": record["topic_id"],
+                            "summary": record["summary"]
+                        }},
+                        upsert=True
+                    )
+            elif asset_name == "audio_summaries":
+                for record in records:
+                    collection.update_one(
+                        {"url": record["url"]},  # Match by article url
+                        {"$set": {
+                            "url": record["url"],
+                            "title": record["title"],
+                            "published_date": record["published_date"],
+                            "source_id": record["source_id"],
+                            "topic_id": record["topic_id"],
+                            "summary_for_audio": record["summary_for_audio"],
+                            "audio_url": record["audio_url"]
+                        }},
+                        upsert=True
+                    )
             else:
                 collection.delete_many({})
                 if records:
@@ -91,23 +130,3 @@ class MongoDBIOManager(IOManager):
         except Exception as e:
             raise RuntimeError(f"Failed to load data from MongoDB: {e}")
         
-    def get_collection_by_name(self, collection_name):
-        """Get MongoDB collection by name directly."""
-        db_name = self._config["database"]
-        client = MongoClient(self._config["uri"])
-        db = client[db_name]
-
-        if collection_name not in db.list_collection_names():
-            db.create_collection(collection_name)
-            print(f"Created new collection: {collection_name}")
-            collection = db[collection_name]
-
-            # Create appropriate indexes based on collection type
-            if collection_name == "articles":
-                collection.create_index("url", unique=True)
-            elif collection_name == "topics":
-                collection.create_index("name", unique=True)
-            elif collection_name == "sources":
-                collection.create_index("name", unique=True)
-
-        return db[collection_name]

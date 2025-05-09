@@ -10,25 +10,24 @@ def checked_summaries(context, summarized_articles: pd.DataFrame):
     logger = get_dagster_logger()
     mongo_io_manager = context.resources.mongo_io_manager
 
-    # Sử dụng phương thức _get_collection để lấy collection
     try:
         collection = mongo_io_manager._get_collection(context)
-        logger.info("Đã lấy collection từ MongoDB thành công")
+        logger.info("Successfully retrieved collection from MongoDB")
     except Exception as e:
-        logger.error(f"Lỗi khi lấy collection từ MongoDB: {e}")
+        logger.error(f"Failed to get collection from MongoDB: {e}")
         raise
 
     # Kiểm tra nếu DataFrame summarized_articles rỗng
     if summarized_articles.empty:
-        logger.warning("DataFrame summarized_articles rỗng")
+        logger.warning("DataFrame summarized_articles is empty")
         return Output(value=pd.DataFrame(), metadata={"num_checked": 0})
 
     # Lấy danh sách các bài báo đã tóm tắt từ DataFrame
     articles = summarized_articles.to_dict("records")
-    logger.info(f"Đã nhận được {len(articles)} bài báo từ summarized_articles")
+    logger.info(f"Found {len(articles)} articles in summarized_articles")
 
     if not articles:
-        logger.warning("Không tìm thấy bài báo nào có tóm tắt")
+        logger.warning("No articles found with summary")
         return Output(value=pd.DataFrame(), metadata={"num_checked": 0})
 
     # Kiểm tra tóm tắt
@@ -36,14 +35,14 @@ def checked_summaries(context, summarized_articles: pd.DataFrame):
     for article in articles:
         try:
             if len(article.get("summary", "")) < 1:
-                logger.warning(f"Tóm tắt quá ngắn cho bài báo {article.get('url', 'unknown')}")
+                logger.warning(f"Summary too short for article {article.get('url', 'unknown')}")
                 collection.update_one(
                     {"url": article["url"]},
                     {"$set": {"summary_status": "failed"}},
                     upsert=True
                 )
             else:
-                logger.info(f"Tóm tắt hợp lệ cho bài báo {article.get('url', 'unknown')}")
+                logger.info(f"Summary valid for article {article.get('url', 'unknown')}")
                 collection.update_one(
                     {"url": article["url"]},
                     {"$set": {"summary_status": "passed"}},
@@ -51,15 +50,15 @@ def checked_summaries(context, summarized_articles: pd.DataFrame):
                 )
                 checked_articles.append(article)
         except Exception as e:
-            logger.error(f"Lỗi khi kiểm tra tóm tắt cho bài báo {article.get('url', 'unknown')}: {e}")
+            logger.error(f"Error checking summary for article {article.get('url', 'unknown')}: {e}")
             continue
 
     if not checked_articles:
-        logger.warning("Không có bài báo nào vượt qua kiểm tra tóm tắt")
+        logger.warning("No articles passed summary check")
         return Output(value=pd.DataFrame(), metadata={"num_checked": 0})
 
     df = pd.DataFrame(checked_articles)
-    logger.info(f"Đã kiểm tra {len(df)} bài báo")
+    logger.info(f"Checked {len(df)} articles")
     return Output(
         value=df,
         metadata={"num_checked": len(df)}

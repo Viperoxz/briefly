@@ -3,6 +3,7 @@ from .sources_and_topics import sources, topics
 from .raw_articles import raw_articles
 from .summarized_articles import summarized_articles
 from .embedded_articles import embedded_articles
-from .sync_up import sync_up
+from .summary_for_audio import summary_for_audio
+from .text_to_speech import text_to_speech
 from .checked_summaries import checked_summaries
 from .clean_orphaned_embeddings import clean_orphaned_embeddings

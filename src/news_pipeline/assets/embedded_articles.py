@@ -4,15 +4,17 @@ from ..utils.embedding import clean_text, chunk_text, generate_embedding
 from ..models.embedded_article import EmbeddedArticle
 from ..models.article import Article
 import pandas as pd
+import numpy as np
 
 article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
 @asset(
     key="embedded_articles",
-    io_manager_key="mongo_io_manager",
+    io_manager_key="mongo_io_manager",  
     partitions_def=article_partitions_def,
-    ins={"raw_articles": AssetIn(key="articles")}
+    ins={"summarized_articles": AssetIn(key="summarized_articles")}  
 )
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  
 def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFrame]:
     logger = get_dagster_logger()
     partition_key = context.partition_key
@@ -43,31 +45,31 @@ def embedded_articles(context, raw_articles: pd.DataFrame) -> Output[pd.DataFram
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0})
         
         # Average embeddings across chunks
-        import numpy as np
         embeddings = np.mean(embeddings_list, axis=0).tolist() if embeddings_list else None
 
-        # Store embedding in Qdrant
+        # Ánh xạ source_id và topic_id thành tên
+        mongo_io_manager = context.resources.mongo_io_manager
+        source_doc = mongo_io_manager._get_collection(context, "sources").find_one({"_id": article_model.source_id})
+        topic_doc = mongo_io_manager._get_collection(context, "topics").find_one({"_id": article_model.topic_id})
+        source_name = source_doc["name"] if source_doc else ""
+        topic_name = topic_doc["name"] if topic_doc else ""
+
+        # Store embedding in Qdrant with updated payload
+        payload = {
+            "title": article_model.title,
+            "source_name": source_name,
+            "topic_name": topic_name,
+            "published_date": article_model.published_date.isoformat()
+        }
         context.resources.qdrant_io_manager.store_embedding(
             point_id=str(article_model.url),
             vector=embeddings,
-            payload={
-                "source": article_model.source,
-                "topic": article_model.topic,
-                "title": article_model.title,
-            }
-        )
-
-        # Update MongoDB with embeddings
-        context.resources.mongo_io_manager.collection.update_one(
-            {"url": article_model.url},
-            {"$set": {"embeddings": embeddings}},
-            upsert=True
+            payload=payload
         )
 
         logger.info(f"Generated embeddings for article {article_model.url}")
-        embedded_article = EmbeddedArticle(**article_model.dict(), embeddings=embeddings)
-        # Ensure 'url' is explicitly included in the output DataFrame
-        output_data = embedded_article.dict()
+        embedded_article = EmbeddedArticle(**article_model.model_dump())
+        output_data = embedded_article.model_dump()
         output_data["url"] = article_model.url
         return Output(
             value=pd.DataFrame([output_data]),

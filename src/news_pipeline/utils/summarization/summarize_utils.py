@@ -43,10 +43,10 @@ async def summarize_content_async(content: str, mongo_client: MongoClient = None
         )
         summary = response.choices[0].message.content.strip()
         if not summary:
-            logger.error("API Groq trả về tóm tắt rỗng")
-            raise ValueError("Tóm tắt rỗng từ API Groq")
-        
-        logger.info(f"Tóm tắt được tạo: {summary[:50]}...")
+            logger.error("API Groq return an empty summary")
+            raise ValueError("Empty summary from API Groq")
+
+        logger.info(f"Summary created: {summary[:50]}...")
         return summary
 
     except Exception as e:
@@ -59,8 +59,8 @@ async def summarize_content_async(content: str, mongo_client: MongoClient = None
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         })
-        logger.error(f"Không thể tóm tắt nội dung: {e}")
-        raise ValueError(f"Không thể tóm tắt nội dung: {e}")
+        logger.error(f"Unable to summarize content: {e}")
+        raise ValueError(f"Unable to summarize content: {e}")
 
 def summarize_content(content: str, mongo_client: MongoClient = None) -> str:
     """Synchronous wrapper for summarize_content_async."""
@@ -68,11 +68,11 @@ def summarize_content(content: str, mongo_client: MongoClient = None) -> str:
     try:
         return asyncio.run(summarize_content_async(content, mongo_client))
     except ValueError as e:
-        logger.error(f"Lỗi khi tóm tắt nội dung: {e}")
+        logger.error(f"Error summarizing content: {e}")
         raise
     except Exception as e:
-        logger.error(f"Lỗi không xác định khi tóm tắt nội dung: {e}")
-        raise ValueError(f"Lỗi không xác định khi tóm tắt nội dung: {e}")
+        logger.error(f"Error summarizing content: {e}")
+        raise ValueError(f"Unable to summarize content: {e}")
 
 async def summarize_multiple_contents(contents: List[str], mongo_client: MongoClient = None) -> List[str]:
     """Summarize multiple contents concurrently."""
@@ -81,5 +81,5 @@ async def summarize_multiple_contents(contents: List[str], mongo_client: MongoCl
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(f"Lỗi khi tóm tắt nội dung {i}: {result}")
+            logger.error(f"Error summarizing content {i}: {result}")
     return results
