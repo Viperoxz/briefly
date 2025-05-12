@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 from datetime import datetime
 import re
@@ -19,6 +19,16 @@ class Article(BaseModel):
     published_date: datetime = Field(..., description="Publication date of the article")
     content: str = Field(..., description="Full content of the article")
     alias: str = Field(..., description="Alias of the article title")
+    summary: Optional[list[str]] = Field(None, description="Summary of the article")
+    audio_url: Optional[ObjectId] = Field(None, description="URL of the audio version of the article")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,  
+        extra="ignore",  
+        json_encoders={  
+            ObjectId: lambda v: str(v)
+        }
+    )
 
     @field_validator("source_id")
     @classmethod
@@ -57,8 +67,8 @@ class Article(BaseModel):
     @field_validator("content")
     @classmethod
     def validate_content(cls, v):
-        if len(v) < 50:
-            raise ValueError("Content is too short (minimum 50 characters)")
+        if len(v) < 20:
+            raise ValueError("Content is too short (minimum 20 characters)")
         return v
 
     @field_validator("alias")
@@ -67,7 +77,3 @@ class Article(BaseModel):
         if not v or len(v.strip()) < 1:
             raise ValueError("Alias cannot be empty")
         return v
-
-    class Config:
-        arbitrary_types_allowed = True  # Cho phép kiểu ObjectId
-        extra = "ignore"

@@ -1,6 +1,23 @@
 import requests
 from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+import http.client
+import urllib.error
+import socket
+import feedparser
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(2),
+    retry=retry_if_exception_type((
+        http.client.RemoteDisconnected, 
+        urllib.error.URLError, 
+        socket.timeout,
+        requests.exceptions.RequestException,
+        ConnectionError,
+        ConnectionResetError
+    )),
+)
 def extract_full_article(url: str) -> str:
     headers = {
         'User-Agent': 'Mozilla/5.0'
@@ -63,3 +80,22 @@ def slugify(name):
 
 def alias_from_topic(topic):
     return ''.join(word[0].lower() for word in topic.split())
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type((http.client.RemoteDisconnected, urllib.error.URLError, socket.timeout)),
+)
+def parse_feed_with_retry(url, logger):
+    """Parse RSS feed with retry mechanism."""
+    try:
+        request_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+        }
+
+        return feedparser.parse(url, request_headers=request_headers)
+    except Exception as e:
+        logger.warning(f"Error parsing feed {url}: {e}")
+        raise
+

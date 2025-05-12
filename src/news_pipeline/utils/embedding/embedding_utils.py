@@ -11,6 +11,14 @@ import time
 
 load_dotenv()
 
+_EMBEDDER_INSTANCE = None
+
+def get_embedder():
+    global _EMBEDDER_INSTANCE
+    if _EMBEDDER_INSTANCE is None:
+        _EMBEDDER_INSTANCE = Embedder()
+    return _EMBEDDER_INSTANCE
+
 class Embedder:
     def __init__(self):
         self.logger = get_dagster_logger()
@@ -76,8 +84,12 @@ def generate_embedding(texts: List[List[str]]) -> List[List[float]]:
     """Generate embeddings for a list of texts (each text is a list of chunks)."""
     start_time = time.time()
     logger = get_dagster_logger()
+
+    if not texts:
+        logger.warning("No texts provided for embedding")
+        return []
     try:
-        embedder = Embedder()
+        embedder = get_embedder()
         # Flatten all chunks
         all_chunks = [chunk for text in texts for chunk in text]
         if not all_chunks:
@@ -88,6 +100,10 @@ def generate_embedding(texts: List[List[str]]) -> List[List[float]]:
         loop = asyncio.get_event_loop()
         embeddings = loop.run_until_complete(embedder.embed_chunks(all_chunks))
 
+        if not embeddings or not isinstance(embeddings, list):
+            logger.warning("Invalid embeddings structure: not a list")
+            return [[] for _ in texts]
+
         # Reorganize embeddings by text
         result = []
         chunk_idx = 0
@@ -95,7 +111,14 @@ def generate_embedding(texts: List[List[str]]) -> List[List[float]]:
             text_embeddings = []
             for _ in range(len(text)):
                 if chunk_idx < len(embeddings):
-                    text_embeddings.append(embeddings[chunk_idx].tolist())
+                    current_emb = embeddings[chunk_idx]
+                    if isinstance(current_emb, np.ndarray):
+                        text_embeddings.append(current_emb.tolist())
+                    elif isinstance(current_emb, list):
+                        text_embeddings.append(current_emb)
+                    else:
+                        logger.warning(f"Skipping invalid embedding type: {type(current_emb)}")
+                        text_embeddings.append([])
                     chunk_idx += 1
                 else:
                     text_embeddings.append([])

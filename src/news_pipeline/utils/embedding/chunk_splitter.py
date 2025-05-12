@@ -59,7 +59,7 @@ def chunk_text(text: str) -> List[str]:
     logger.debug(f"Pyvi tokenization took {time.time() - pyvi_start:.2f}s")
 
     # Process and chunk
-    chunks = process_single_text(tokenized_text, tokenizer, max_tokens=4096, device=device)
+    chunks = process_single_text(tokenized_text, tokenizer, max_tokens=2048, device=device)
 
     return chunks
 

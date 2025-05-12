@@ -1,1 +1,0 @@
-- đảm bảo cuối cùng mọi document trong mongo đều có đủ summary, mọi document có lưu trong qdrant đều có lưu trong mongo

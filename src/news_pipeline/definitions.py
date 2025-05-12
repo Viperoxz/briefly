@@ -1,24 +1,25 @@
 from dagster import (
     Definitions,
     DynamicPartitionsDefinition,
-    ScheduleDefinition,
-    define_asset_job,
-    SensorDefinition,
-    RunRequest,
-    SkipReason,
-    AssetSelection,
     multiprocess_executor
 )
-from .assets.rss_feeds import rss_feed_list
-from .assets.sources_and_topics import sources, topics
-from .assets.raw_articles import raw_articles
-from .assets.summarized_articles import summarized_articles
-from .assets.embedded_articles import embedded_articles
-from .assets.summary_for_audio import summary_for_audio  
+from .assets import (
+    rss_feed_list,
+    sources,
+    topics,
+    raw_articles,
+    articles_with_summary,
+    embedded_articles,
+    text_to_speech
+)
 from .resources.mongo_io_manager import MongoDBIOManager
 from .resources.qdrant_io_manager import QdrantIOManager
 import os
 from dotenv import load_dotenv
+from .sensors import article_partition_sensor, embedding_partition_sensor, tts_partition_sensor
+from .jobs import sources_topics_job, articles_update_job, articles_processing_job, articles_embedding_job, articles_tts_job
+from .schedules import sources_topics_schedule, articles_update_schedule
+
 
 load_dotenv()
 
@@ -31,35 +32,12 @@ MONGO_CONFIG = {
 
 QDRANT_CONFIG = {
     "url": os.getenv("QDRANT_URL"),
-    "api_key": os.getenv("QDRANT_API_KEY")
+    # "api_key": os.getenv("QDRANT_API_KEY")
 }
 
 MAX_CONCURRENCIES = int(os.getenv("MAX_CONCURRENCIES", 4))
 
-articles_update_job = define_asset_job(
-    name="articles_update_job",
-    selection=AssetSelection.keys("rss_feed_list", "sources", "topics", "articles"),
-    config={"ops": {"articles": {"config": {"save_json": False}}}}
-)
-
-summary_job = define_asset_job(
-    name="summary_job",
-    selection=AssetSelection.keys("articles", "summarized_articles", "summary_for_audio", "embedded_articles")
-)
-
-
-# Schedules
-articles_update_schedule = ScheduleDefinition(
-    job=articles_update_job,
-    cron_schedule="*/3 * * * *",
-    run_config={"ops": {"articles": {"config": {"save_json": False}}}}
-)
-
-summary_schedule = ScheduleDefinition(
-    job=summary_job,
-    cron_schedule="*/10 * * * *",  
-    run_config={}
-)
+article_partitions_sensor = article_partition_sensor
 
 defs = Definitions(
     assets=[
@@ -67,16 +45,17 @@ defs = Definitions(
         sources,
         topics,
         raw_articles,
-        summarized_articles,
-        summary_for_audio, 
-        embedded_articles,
+        articles_with_summary,
+        text_to_speech,
+        embedded_articles
     ],
     resources={
         "mongo_io_manager": MongoDBIOManager(MONGO_CONFIG),
-        "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG),
+        "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG)
     },
-    jobs=[articles_update_job, summary_job],
-    schedules=[articles_update_schedule, summary_schedule],
+    jobs=[sources_topics_job, articles_update_job, articles_processing_job, articles_embedding_job, articles_tts_job],
+    schedules=[sources_topics_schedule, articles_update_schedule],
+    sensors=[article_partition_sensor, embedding_partition_sensor, tts_partition_sensor],
     executor=multiprocess_executor.configured(
         {"max_concurrent": MAX_CONCURRENCIES}
     )

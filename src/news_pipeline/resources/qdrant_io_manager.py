@@ -3,25 +3,30 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 import os
 from dotenv import load_dotenv
+from ..config import settings
 
 load_dotenv()
 
 class QdrantIOManager(IOManager):
     def __init__(self, config):
         self._config = config
-        self.client = QdrantClient(
-            url=os.getenv("QDRANT_URL"),
-            api_key=os.getenv("QDRANT_API_KEY"),
-            prefer_grpc=True
-        )
-        self.collection_name = "ArticleEmbeddings"
+
+        client_params = {
+            "url": config.get("url"),
+            "prefer_grpc": True
+        }
+        if "api_key" in config and config["api_key"]:
+            client_params["api_key"] = config["api_key"]
+        
+        self.client = QdrantClient(**client_params)
+        self.collection_name = os.getenv("QDRANT_COLLECTION_NAME", "ArticleEmbeddings")
         
         try:
             collections = self.client.get_collections()
             if self.collection_name not in [c.name for c in collections.collections]:
                 self.client.create_collection(
                     collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=384, distance=Distance.COSINE)
+                    vectors_config=VectorParams(size=settings.EMBEDDING_VECTOR_SIZE, distance=Distance.COSINE)
                 )
                 print(f"Created Qdrant collection: {self.collection_name}")
         except Exception as e:
@@ -29,6 +34,15 @@ class QdrantIOManager(IOManager):
 
     def store_embedding(self, point_id: str, vector: list, payload: dict):
         try:
+            import uuid
+            import hashlib
+
+            try:
+                uuid.UUID(point_id)
+            except ValueError:
+                hash_obj = hashlib.md5(point_id.encode()).hexdigest()
+                point_id = str(uuid.UUID(hash_obj[:32]))  
+                
             point = PointStruct(
                 id=point_id,
                 vector=vector,
