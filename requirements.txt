@@ -15,3 +15,7 @@ pymongo
 langchain
 pyvi
 langchain-groq
+langchain-core
+uuid
+qdrant-client
+sentence-transformers

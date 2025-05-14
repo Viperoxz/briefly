@@ -15,9 +15,20 @@ setup(
         "lxml",
         "python-dotenv",
         "pydantic",
+        "readability-lxml",
+        "tenacity",
+        "pymongo",
+        "tenacity",
+        "sentence-transformers",
         "groq",
-        "tenacity"
-
+        "openai",
+        "pymongo",
+        "langchain",
+        "pyvi",
+        "langchain-groq",
+        "langchain-core",
+        "uuid",
+        "qdrant-client",
     ],
     extras_require={"dev": ["dagster-webserver", "pytest"]},
 )
