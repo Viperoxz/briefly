@@ -41,7 +41,6 @@ def upload_to_danio(file_path: str, auth_token: str, logger) -> str:
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36'
         }
         
-        
         with open(file_path, 'rb') as f:
             files = {'file': (file_path, f, 'audio/mpeg')}
             # file_data = f.read()

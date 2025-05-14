@@ -17,7 +17,7 @@ def related_articles_sensor(context):
     1. New articles with summary and validation_score but no related_ids
     2. Articles with related_ids older than 1 day that need refreshing
     
-    Triggers when at least 100 eligible articles exist.
+    Triggers when at least 50 eligible articles exist.
     """
     logger = get_dagster_logger()
     
@@ -55,8 +55,8 @@ def related_articles_sensor(context):
         }
         
         eligible_count = article_collection.count_documents(query)
-        if eligible_count < 100:
-            return SkipReason(f"Only {eligible_count} articles eligible for related articles processing. Need at least 100.")
+        if eligible_count < 50:
+            return SkipReason(f"Only {eligible_count} articles eligible for related articles processing. Need at least 50.")
 
         last_processed = context.cursor
         
