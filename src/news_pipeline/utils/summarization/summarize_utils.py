@@ -6,6 +6,7 @@ from dagster import get_dagster_logger
 import pandas as pd
 from dotenv import load_dotenv
 from bson import ObjectId
+from .validation_utils import fact_check_article
 
 load_dotenv()
 
@@ -62,17 +63,27 @@ async def process_single_article(index, row, client, mongo_io_manager, articles_
     
     try:
         content = row["content"]
-        summary = await summarize_article_async(content, client)
+        try:
+            summary = await summarize_article_async(content, client)
+        except Exception as e:
+            logger.warning(f"Summarization error for {row['url']}: {e}")
+            summary = content[:500]
+
+        try:
+            validation_score = await fact_check_article(summary)
+        except Exception as e:
+            logger.warning(f"Fact-checking error for {row['url']}: {e}")
+            validation_score = 2
+
         summary_array = [item.strip() for item in summary.split('\n') if item.strip()]
-        
-        articles_df.at[index, "summary"] = pd.Series([summary_array], 
+        articles_df.at[index, "summary"] = pd.Series([summary_array],
                                                     index=[index]).iloc[0]
         
         # Update MongoDB
         collection = mongo_io_manager._get_collection(None, "articles")
         collection.update_one(
             {"url": row["url"]},
-            {"$set": {"summary": summary_array}},
+            {"$set": {"summary": summary_array, "validation_score": validation_score}},
             upsert=False
         )
         logger.info(f"✅ Summarized article: {row['url']}")

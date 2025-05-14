@@ -10,14 +10,23 @@ from .assets import (
     raw_articles,
     articles_with_summary,
     embedded_articles,
-    text_to_speech
+    text_to_speech,
+    related_articles
 )
 from .resources.mongo_io_manager import MongoDBIOManager
 from .resources.qdrant_io_manager import QdrantIOManager
 import os
 from dotenv import load_dotenv
-from .sensors import article_partition_sensor, embedding_partition_sensor, tts_partition_sensor
-from .jobs import sources_topics_job, articles_update_job, articles_processing_job, articles_embedding_job, articles_tts_job
+from .sensors import (article_partition_sensor, 
+                      embedding_partition_sensor, 
+                      tts_partition_sensor, 
+                      related_articles_sensor)
+from .jobs import (sources_topics_job, 
+                   articles_update_job, 
+                   articles_processing_job, 
+                   articles_embedding_job, 
+                   articles_tts_job,
+                   related_articles_job)
 from .schedules import sources_topics_schedule, articles_update_schedule
 
 
@@ -32,7 +41,7 @@ MONGO_CONFIG = {
 
 QDRANT_CONFIG = {
     "url": os.getenv("QDRANT_URL"),
-    # "api_key": os.getenv("QDRANT_API_KEY")
+    "api_key": os.getenv("QDRANT_API_KEY")
 }
 
 MAX_CONCURRENCIES = int(os.getenv("MAX_CONCURRENCIES", 4))
@@ -47,15 +56,24 @@ defs = Definitions(
         raw_articles,
         articles_with_summary,
         text_to_speech,
-        embedded_articles
+        embedded_articles,
+        related_articles
     ],
     resources={
         "mongo_io_manager": MongoDBIOManager(MONGO_CONFIG),
         "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG)
     },
-    jobs=[sources_topics_job, articles_update_job, articles_processing_job, articles_embedding_job, articles_tts_job],
+    jobs=[sources_topics_job, 
+          articles_update_job, 
+          articles_processing_job, 
+          articles_embedding_job, 
+          articles_tts_job, 
+          related_articles_job],
     schedules=[sources_topics_schedule, articles_update_schedule],
-    sensors=[article_partition_sensor, embedding_partition_sensor, tts_partition_sensor],
+    sensors=[article_partition_sensor, 
+             embedding_partition_sensor, 
+             tts_partition_sensor,
+             related_articles_sensor],
     executor=multiprocess_executor.configured(
         {"max_concurrent": MAX_CONCURRENCIES}
     )

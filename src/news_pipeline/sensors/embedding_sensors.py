@@ -12,9 +12,10 @@ import time
 import random
 import hashlib
 
+
 @sensor(
     job=articles_embedding_job,
-    minimum_interval_seconds=240, 
+    minimum_interval_seconds=60, 
 )
 def embedding_partition_sensor(context):
     """Enhanced sensor to detect articles with summaries that need embeddings."""
@@ -37,10 +38,10 @@ def embedding_partition_sensor(context):
 
         # Add logic to determine if backfill is needed
         current_time = time.time()
-        last_backfill_key = "last_full_embedding_backfill"
-        last_backfill = context.instance.get_sensor_cursor(context.sensor_name, last_backfill_key)
         backfill_interval = 3600 * 6  # 6 hours
-        
+
+        # Lấy trạng thái cursor hiện tại hoặc dùng None nếu chưa có
+        last_backfill = context.cursor
         perform_backfill = False
         if not last_backfill or float(last_backfill) + backfill_interval < current_time:
             perform_backfill = True
@@ -72,10 +73,9 @@ def embedding_partition_sensor(context):
         
         # Update backfill cursor only after successful processing
         if perform_backfill:
-            context.instance.update_sensor_cursor(context.sensor_name, last_backfill_key, str(current_time))
             logger.info(f"Backfill: Processing {len(article_urls)} articles for embedding")
             # Select a random subset of URLs to process each time
-            article_urls_to_process = random.sample(article_urls, min(15, len(article_urls)))
+            article_urls_to_process = random.sample(article_urls, min(3, len(article_urls)))
             
             run_requests = []
             for url in article_urls_to_process:
@@ -84,9 +84,11 @@ def embedding_partition_sensor(context):
                         run_key=f"embed_article_{hashlib.md5(url.encode()).hexdigest()}_{int(current_time)}",
                         run_config={},
                         tags={"article_url": url, "process_type": "embedding", "source": "backfill"},
-                        partition_key=url
+                        partition_key=url,
+                        cursor=str(current_time)
                     )
                 )
+            # Trả về run requests kèm theo cursor được cập nhật
             return run_requests
         else:
             urls_to_process = article_urls[:10]
@@ -101,6 +103,7 @@ def embedding_partition_sensor(context):
                         partition_key=url
                     )
                 )
+            # Trong trường hợp không phải backfill, không cần cập nhật cursor
             return run_requests
     except Exception as e:
         logger.error(f"Error in embedding sensor: {str(e)}")

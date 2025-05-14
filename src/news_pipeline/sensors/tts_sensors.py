@@ -8,7 +8,7 @@ import hashlib
 
 @sensor(
     job=articles_tts_job,
-    minimum_interval_seconds=180,  
+    minimum_interval_seconds=60,  
 )
 def tts_partition_sensor(context):
     """Sensor to detect articles with summaries that need TTS."""
@@ -22,17 +22,21 @@ def tts_partition_sensor(context):
         existing_partitions = set(context.instance.get_dynamic_partitions("article_partitions"))
 
         # Find articles with summaries but no audio
+        # Trong hàm tts_partition_sensor
         query = {
             "summary": {"$exists": True, "$ne": ""},
-            "audio_id": {"$exists": False}
+            "$or": [
+                {"male_audio_id": {"$exists": False}},
+                {"female_audio_id": {"$exists": False}}
+            ]
         }
 
         # Add logic to determine if backfill is needed
         current_time = time.time()
-        last_backfill_key = "last_full_tts_backfill"
-        last_backfill = context.instance.get_sensor_cursor(context.sensor_name, last_backfill_key)
         backfill_interval = 3600 * 6  # 6 hours
-        
+
+        # Lấy trạng thái cursor hiện tại hoặc dùng None nếu chưa có 
+        last_backfill = context.cursor
         perform_backfill = False
         if not last_backfill or float(last_backfill) + backfill_interval < current_time:
             perform_backfill = True
@@ -63,8 +67,8 @@ def tts_partition_sensor(context):
         
         # Process the articles
         if perform_backfill:
-            # Update cursor AFTER successful processing
-            context.instance.update_sensor_cursor(context.sensor_name, last_backfill_key, str(current_time))
+            # Đã xóa dòng cập nhật cursor kiểu cũ
+            # context.instance.update_url(context.sensor_name, last_backfill_key, str(current_time))
             logger.info(f"Backfill: Processing {len(article_urls)} articles for TTS")
             # Select a random subset of URLs to process each time
             article_urls_to_process = random.sample(article_urls, min(30, len(article_urls)))
@@ -76,7 +80,8 @@ def tts_partition_sensor(context):
                         run_key=f"tts_{hashlib.md5(url.encode()).hexdigest()}_{int(current_time)}",
                         run_config={},
                         tags={"article_url": url, "process_type": "tts", "source": "backfill"},
-                        partition_key=url
+                        partition_key=url,
+                        cursor=str(current_time)  # Đặt cursor trực tiếp vào RunRequest
                     )
                 )
             return run_requests
@@ -94,6 +99,7 @@ def tts_partition_sensor(context):
                         partition_key=url
                     )
                 )
+            # Không cần cập nhật cursor khi không phải backfill
             return run_requests
     except Exception as e:
         logger.error(f"Error in TTS sensor: {str(e)}")

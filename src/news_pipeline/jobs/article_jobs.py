@@ -15,7 +15,7 @@ articles_update_job = define_asset_job(
 
 articles_processing_job = define_asset_job(
     name="articles_processing_job",
-    selection=AssetSelection.keys("articles_with_summary", "text_to_speech"),
+    selection=AssetSelection.keys("articles_with_summary"),
     partitions_def=article_partitions_def,
     op_retry_policy=RetryPolicy(max_retries=3)
 )
@@ -23,6 +23,14 @@ articles_processing_job = define_asset_job(
 articles_embedding_job = define_asset_job(
     name="articles_embedding_job",
     selection=AssetSelection.keys("embedded_articles"),
+    partitions_def=article_partitions_def,
+    op_retry_policy=RetryPolicy(max_retries=3)
+)
+
+
+related_articles_job = define_asset_job(
+    name="related_articles_job",
+    selection=AssetSelection.keys("related_articles"),
     partitions_def=article_partitions_def,
     op_retry_policy=RetryPolicy(max_retries=3)
 )

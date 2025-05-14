@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Article(BaseModel):
-    id: ObjectId = Field(alias="_id", description="MongoDB ObjectId of the article")
+    id: Optional[ObjectId] = Field(default=None, alias="_id", description="MongoDB ObjectId of the article")
     source_id: ObjectId = Field(..., description="ID of the article source")
     topic_id: ObjectId = Field(..., description="ID of the article topic")
     title: str = Field(..., description="Title of the article")
@@ -21,6 +21,7 @@ class Article(BaseModel):
     alias: str = Field(..., description="Alias of the article title")
     summary: Optional[list[str]] = Field(None, description="Summary of the article")
     audio_url: Optional[ObjectId] = Field(None, description="URL of the audio version of the article")
+    embedding_status: Optional[str] = Field(None, description="Status of the article embedding")
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,  
@@ -48,21 +49,21 @@ class Article(BaseModel):
             raise ValueError(f"Topic ID '{v}' not found in topics collection")
         return v
 
-    @field_validator("url")
-    @classmethod
-    def validate_url(cls, v):
-        url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
-        if not re.match(url_pattern, v):
-            raise ValueError(f"Invalid URL for url: {v}")
-        return v
+    # @field_validator("url")
+    # @classmethod
+    # def validate_url(cls, v):
+    #     url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+    #     if not re.match(url_pattern, v):
+    #         raise ValueError(f"Invalid URL for url: {v}")
+    #     return v
 
-    @field_validator("image")
-    @classmethod
-    def validate_image(cls, v):
-        url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
-        if not re.match(url_pattern, v):
-            raise ValueError(f"Invalid URL for image: {v}")
-        return v
+    # @field_validator("image")
+    # @classmethod
+    # def validate_image(cls, v):
+    #     url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+    #     if not re.match(url_pattern, v):
+    #         raise ValueError(f"Invalid URL for image: {v}")
+    #     return v
 
     @field_validator("content")
     @classmethod

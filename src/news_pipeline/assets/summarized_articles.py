@@ -1,11 +1,12 @@
 from dagster import asset, get_dagster_logger, Output, AssetIn, DynamicPartitionsDefinition
 import pandas as pd
 import asyncio
-from ..utils.summarization import process_articles_async
+from ..utils.summarization import process_articles_async, fact_check_article
 from bson import ObjectId
 
 
 @asset(
+    description="Summarize articles and store the summaries in MongoDB.",
     key="articles_with_summary",
     io_manager_key="mongo_io_manager",
     ins={"articles": AssetIn(key="articles")},

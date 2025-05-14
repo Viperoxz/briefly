@@ -4,4 +4,4 @@ from .raw_articles import raw_articles
 from .summarized_articles import articles_with_summary
 from .embedded_articles import embedded_articles
 from .text_to_speech import text_to_speech
-from .test_tts import test_tts
+from .get_relevant_articles import related_articles

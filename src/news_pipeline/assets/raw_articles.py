@@ -22,6 +22,7 @@ from ..utils.extraction import (
     slugify,
     parse_feed_with_retry
 )
+from ..models import Article
 
 
 @retry(
@@ -40,10 +41,16 @@ def extract_full_article_with_retry(url: str) -> str:
     """Wrapper around extract_full_article with retry logic"""
     return extract_full_article(url)
 
+def get_existing_urls(article_collection) -> set:
+    """Get all existing article URLs from MongoDB."""
+    return set(doc["url"] for doc in article_collection.find({}, {"url": 1}))
+
 @asset(
+    description="Fetch articles from RSS feeds and store them in MongoDB.",
     key="articles",
     io_manager_key="mongo_io_manager",
-    kinds={"mongodb", "pydantic"}
+    group_name="raw_articles",
+    kinds={"python", "mongodb", "pydantic"}
 )
 def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """ Fetch articles from RSS feeds and store them in MongoDB."""
@@ -58,6 +65,9 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
     topic_collection = db["topics"]
     article_collection = db["articles"]
     
+    existing_urls = get_existing_urls(article_collection)
+    logger.info(f"📊 Found {len(existing_urls)} existing articles in MongoDB")
+
     max_entries_per_feed = int(os.getenv("MAX_ENTRIES_PER_FEED", 1))
     request_delay = float(os.getenv("REQUEST_DELAY", 1.0))
 
@@ -83,7 +93,7 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                 try:
                     # Check if article already exists
                     article_url = entry.link
-                    if article_collection.find_one({"url": article_url}):
+                    if article_url in existing_urls:
                         logger.info(f"⏭️ Skipped (already in MongoDB): {article_url}")
                         continue
                     time.sleep(request_delay)
@@ -107,18 +117,24 @@ def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
                     alias_title = slugify(title)
 
                     if content and image_url:  
-                        articles.append({
-                            "source_id": source_id,
-                            "topic_id": topic_id,
-                            "title": title,
-                            "url": entry.link,
-                            "image": image_url,
-                            "published_date": published_dt,
-                            "content": content,
-                            "alias": alias_title
-                        })
-                        success_count += 1
-                        logger.info(f"✅ Successfully processed: {entry.link}")
+                        try:
+                            article_data = {
+                                "source_id": source_id,
+                                "topic_id": topic_id,
+                                "title": title,
+                                "url": entry.link,
+                                "image": image_url,
+                                "published_date": published_dt,
+                                "content": content,
+                                "alias": alias_title
+                            }
+                            article_obj = Article(**article_data)
+                            articles.append(article_data)                           
+                            success_count += 1
+                            logger.info(f"✅ Successfully processed: {entry.link}")
+                        except Exception as e:
+                            logger.warning(f"❌ Skipped (validation failed: {str(e)}): {entry.link}")
+                            failure_count += 1
                     else:
                         logger.warning(f"❌ Skipped (missing content or image): {entry.link}")
                         failure_count += 1
