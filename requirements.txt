@@ -10,3 +10,8 @@ pydantic>=2.0.0
 tenacity
 sentence-transformers
 groq
+openai
+pymongo
+langchain
+pyvi
+langchain-groq

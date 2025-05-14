@@ -1,10 +1,14 @@
 import pandas as pd
 from dagster import asset, Output
-from ..utils.extract_utils import slugify, alias_from_topic
+from ..utils.extraction import slugify
+
 
 @asset(
+    description="Get the source and alias name.",
     key="sources",
-    io_manager_key="mongo_io_manager"
+    io_manager_key="mongo_io_manager",
+    group_name="sources_and_topics",
+    kinds={"python", "mongodb"}
 )
 def sources(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """Get the source and alias name."""
@@ -24,9 +28,12 @@ def sources(rss_feed_list: dict) -> Output[pd.DataFrame]:
         }
     )
 
+
 @asset(
+    description="Get the topic and alias name.",
     key="topics",
-    io_manager_key="mongo_io_manager"
+    io_manager_key="mongo_io_manager",
+    group_name="sources_and_topics"
 )
 def topics(rss_feed_list: dict) -> Output[pd.DataFrame]:
     """Get the topic and alias name."""
@@ -35,7 +42,7 @@ def topics(rss_feed_list: dict) -> Output[pd.DataFrame]:
         topic_set.update(source.keys())
 
     topics = [
-        {"name": topic, "alias": alias_from_topic(topic)}
+        {"name": topic, "alias": slugify(topic)}
         for topic in sorted(topic_set)
     ]
 
