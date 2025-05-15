@@ -1,4 +1,4 @@
-# SnapNews AI Pipeline
+# Briefly AI Pipeline
 
 This is a [Dagster](https://dagster.io/) project that implements an automated news processing pipeline for collecting, processing, summarizing, and converting Vietnamese news articles to audio.
 
@@ -6,7 +6,7 @@ This is a [Dagster](https://dagster.io/) project that implements an automated ne
 
 ## Project Overview
 
-SnapNews AI is a data orchestration pipeline that:
+Briefly AI is a data orchestration pipeline that:
 1. Crawls Vietnamese news websites for articles
 2. Extracts article content and metadata
 3. Processes and transforms the articles
