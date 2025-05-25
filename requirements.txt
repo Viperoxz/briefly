@@ -19,3 +19,5 @@ langchain-core
 uuid
 qdrant-client
 sentence-transformers
+pyspark==3.5.5
+findspark

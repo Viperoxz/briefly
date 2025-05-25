@@ -2,7 +2,7 @@
 
 This is a [Dagster](https://dagster.io/) project that implements an automated news processing pipeline for collecting, processing, summarizing, and converting Vietnamese news articles to audio.
 
-![Pipeline Architecture](./pipeline.png)
+![Pipeline Architecture](./assets/pipeline.png)
 
 ## Project Overview
 
