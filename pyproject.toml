@@ -1,17 +1,36 @@
 [project]
 name = "news_pipeline"
 version = "0.1.0"
-description = "Add your description here"
+description = "Briefly data pipeline."
 readme = "README.md"
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "dagster",
-    "dagster-cloud",
+    "setuptools~=75.1.0",
+    "feedparser~=6.0.11",
+    "requests~=2.32.3",
+    "pandas~=2.2.2",
+    "dagster~=1.8.10",
+    "beautifulsoup4~=4.12.3",
+    "readability-lxml",
+    "pymongo",
+    "pydantic>=2.0.0",
+    "tenacity",
+    "sentence-transformers",
+    "groq",
+    "openai",
+    "langchain",
+    "pyvi",
+    "langchain-groq",
+    "langchain-core",
+    "uuid",
+    "qdrant-client",
+    "pyspark==3.5.5",
+    "findspark",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "dagster-webserver", 
+    "dagster-webserver",
     "pytest",
 ]
 
@@ -19,10 +38,9 @@ dev = [
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-
 [tool.dagster]
 module_name = "src.news_pipeline.definitions"
 code_location_name = "news_pipeline"
 
 [tool.setuptools.packages.find]
-exclude=["news_pipeline_tests"]
+exclude = ["news_pipeline_tests"]

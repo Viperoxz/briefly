@@ -29,6 +29,7 @@ setup(
         "langchain-core",
         "uuid",
         "qdrant-client",
+        "pyspark"
     ],
     extras_require={"dev": ["dagster-webserver", "pytest"]},
 )

@@ -1,0 +1,71 @@
+version: "3.8"
+
+networks:
+  spark-network:
+    driver: bridge
+
+volumes:
+  spark-logs: {}
+
+services:
+  spark-master:
+    image: spark-cluster:3.5.5
+    container_name: spark-master
+    environment:
+      - SPARK_WORKLOAD=master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_LOG_DIR=/opt/spark/logs
+      - SPARK_MASTER_LOG=/opt/spark/logs/spark-master.out
+      - SPARK_WORKER_LOG=/opt/spark/logs/spark-worker.out
+    ports:
+      - "8080:8080"     # Spark Master Web UI
+      - "7077:7077"     # Spark Master Port (cluster mode)
+    volumes:
+      - ./apps:/opt/spark/spark-apps
+      - spark-logs:/opt/spark/logs
+    networks:
+      - spark-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  spark-worker:
+    image: spark-cluster:3.5.5
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKLOAD=worker
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_EXECUTOR_MEMORY=1G
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - SPARK_WORKER_PORT=7000
+      - SPARK_LOG_DIR=/opt/spark/logs
+      - SPARK_MASTER_LOG=/opt/spark/logs/spark-master.out
+      - SPARK_WORKER_LOG=/opt/spark/logs/spark-worker.out
+    ports:
+      - "8081:8081"  # Spark Worker Web UI
+      - "7000:7000"  # Spark Worker Port
+    volumes:
+      - ./apps:/opt/spark/spark-apps
+      - spark-logs:/opt/spark/logs
+    networks:
+      - spark-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "3G"
