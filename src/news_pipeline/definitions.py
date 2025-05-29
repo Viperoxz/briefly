@@ -13,8 +13,10 @@ from .assets import (
     text_to_speech,
     related_articles
 )
-from .resources.mongo_io_manager import MongoDBIOManager
-from .resources.qdrant_io_manager import QdrantIOManager
+from .resources.io_manager.mongo_io_manager import MongoDBIOManager
+from .resources.io_manager.qdrant_io_manager import QdrantIOManager
+from .resources.io_manager.s3_io_manager import s3_io_manager
+
 import os
 from dotenv import load_dotenv
 from .sensors import (article_partition_sensor, 
@@ -60,6 +62,10 @@ defs = Definitions(
         related_articles
     ],
     resources={
+        "s3_io_manager": s3_io_manager.configured({
+            "bucket": {"env": "S3_BUCKET_NAME"},
+            "region": {"env": "AWS_REGION"}
+        }),
         "mongo_io_manager": MongoDBIOManager(MONGO_CONFIG),
         "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG)
     },

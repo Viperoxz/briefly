@@ -46,21 +46,19 @@ def get_existing_urls(article_collection) -> set:
     return set(doc["url"] for doc in article_collection.find({}, {"url": 1}))
 
 @asset(
-    description="Fetch articles from RSS feeds and store them in MongoDB.",
-    key="articles",
-    io_manager_key="mongo_io_manager",
-    group_name="raw_articles",
-    kinds={"python", "mongodb", "pydantic"}
+    description="Fetch articles from RSS feeds and store raw data in S3.",
+    key="raw_articles",
+    io_manager_key="s3_io_manager",
+    group_name="raw_data",
+    kinds={"python", "s3", "pydantic"},
+    required_resource_keys={"mongo_db"}
 )
-def raw_articles(rss_feed_list: dict) -> Output[pd.DataFrame]:
-    """ Fetch articles from RSS feeds and store them in MongoDB."""
+def raw_articles(context, rss_feed_list: dict) -> Output[pd.DataFrame]:
+    """ Fetch articles from RSS feeds and store them in S."""
     logger = get_dagster_logger()
     articles = []
 
-    mongo_uri = os.getenv("MONGO_URI")
-    mongo_db = os.getenv("MONGO_DB")
-    client = MongoClient(mongo_uri)
-    db = client[mongo_db]
+    db = context.resources.mongo_db
     source_collection = db["sources"]
     topic_collection = db["topics"]
     article_collection = db["articles"]

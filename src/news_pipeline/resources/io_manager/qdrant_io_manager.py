@@ -3,7 +3,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 import os
 from dotenv import load_dotenv
-from ..config import settings
+from ...config import settings
 
 load_dotenv()
 
