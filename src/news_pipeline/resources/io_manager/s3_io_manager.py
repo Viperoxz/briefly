@@ -5,11 +5,13 @@ import pickle
 from io import BytesIO
 from dagster import IOManager, io_manager, OutputContext, InputContext
 from dagster import build_output_context
+from datetime import datetime
+import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
 
-class S3IOManager(IOManager):
+class RawS3IOManager(IOManager):
     def __init__(self, config):
         self._config = config
         self.bucket_name = config["bucket"]
@@ -22,50 +24,57 @@ class S3IOManager(IOManager):
         )
 
     def _get_s3_key(self, context):
-        source = context.metadata.get("source", "unknown")
-        return f"raw_data/{source}/{context.run_id}/{context.step_key}/{context.name}"
+        s3_key = context.metadata.get("s3_key")
+        if s3_key:
+            return s3_key
+        return f"raw_data/{context.name}_{context.run_id}.json" # Fallback: Default key format
 
     def handle_output(self, context: OutputContext, obj):
-        """Write output data to S3"""
+        """Write output data to S3 (Raw layer: json)"""
         key = self._get_s3_key(context)
-        
         if isinstance(obj, (dict, list)):
-            # JSON serializable data
+            body = obj.to_json(orient="records", force_ascii=False)
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
-                Key=f"{key}.json",
-                Body=json.dumps(obj),
+                Key=key,
+                Body=body,
                 ContentType='application/json'
             )
+        elif isinstance(obj, (dict, list)):
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=json.dumps(obj, ensure_ascii=False),
+                ContentType='application/json'
+            )
+            context.log.info(f"Stored raw JSON at s3://{self.bucket_name}/{key}")
         else:
             # Fallback to pickle for other data types
             binary_data = pickle.dumps(obj)
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
-                Key=f"{key}.pkl",
+                Key=key.replace('.json', '.pkl'),
                 Body=binary_data
             )
-            
-        # Log the S3 path where data was stored
-        context.log.info(f"Stored data at s3://{self.bucket_name}/{key}")
+            context.log.info(f"Stored raw pickle at s3://{self.bucket_name}/{key.replace('.json', '.pkl')}")
 
     def load_input(self, context: InputContext):
         """Load input data from S3"""
         key = self._get_s3_key(context.upstream_output)
-        
-        # Try to load as JSON first
         try:
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=f"{key}.json")
-            return json.loads(response['Body'].read().decode('utf-8'))
-        except Exception:
-            # If not JSON, try to load as pickle
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=f"{key}.pkl")
-            return pickle.loads(response['Body'].read())
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+            body = response['Body'].read().decode('utf-8')
+            try:
+                return pd.read_json(body)
+            except Exception:
+                return json.loads(body)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load data from S3: {e}")
 
 
 @io_manager(config_schema={"bucket": str, "region": str})
 def s3_io_manager(init_context):
-    return S3IOManager(config=init_context.resource_config)
+    return RawS3IOManager(config=init_context.resource_config)
 
 
 def test_upload_to_s3():
@@ -78,7 +87,7 @@ def test_upload_to_s3():
     )
 
     # Tạo instance IOManager
-    io_manager = S3IOManager(config={
+    io_manager = RawS3IOManager(config={
         "bucket": os.environ.get("S3_BUCKET_NAME"),
         "region": os.environ.get("AWS_REGION", "ap-southeast-2")
     })

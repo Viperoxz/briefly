@@ -102,20 +102,6 @@ class MongoDBIOManager(IOManager):
                             {"$set": record},
                             upsert=True
                         )
-                # elif asset_name == "summarized_articles":
-                #     for record in records:
-                #         collection.update_one(
-                #             {"url": record["url"]},  # match by article url
-                #             {"$set": {
-                #                 "url": record["url"],
-                #                 "title": record["title"],
-                #                 "published_date": record["published_date"],
-                #                 "source_id": record["source_id"],
-                #                 "topic_id": record["topic_id"],
-                #                 "summary": record["summary"]
-                #             }},
-                #             upsert=True
-                #         )
                 else:
                     collection.delete_many({})
                     if records:
