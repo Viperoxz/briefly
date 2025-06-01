@@ -45,8 +45,6 @@ def extract_full_article(url: str) -> str:
     return cleaned_text
 
 
-
-
 def extract_image_url_from_description(description: str) -> str | None:
     """Extract image URL from the <img> tag inside the description HTML."""
     try:
@@ -77,7 +75,6 @@ def slugify(name):
         .replace("ý", "y").replace("ỳ", "y").replace("ỷ", "y").replace("ỹ", "y").replace("ỵ", "y")
     )
 
-
 def alias_from_topic(topic):
     return ''.join(word[0].lower() for word in topic.split())
 
@@ -93,7 +90,6 @@ def parse_feed_with_retry(url, logger):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
         }
-
         return feedparser.parse(url, request_headers=request_headers)
     except Exception as e:
         logger.warning(f"Error parsing feed {url}: {e}")

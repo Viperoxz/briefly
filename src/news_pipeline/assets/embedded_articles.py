@@ -10,7 +10,7 @@ import os
 import time
 import random
 from ..models.embedded_article import EmbeddedArticle
-from ..models import Article
+from ..models import RawArticle
 from ..config import settings
 from ..utils.embedding import (clean_text, 
                                chunk_text, 
@@ -58,7 +58,7 @@ def embedded_articles(context) -> Output[pd.DataFrame]:
             logger.warning(f"Article {partition_key} does not have a summary yet")
             return Output(value=pd.DataFrame(), metadata={"num_articles": 0, "status": "no_summary"})
 
-        article_model = Article(**article_doc)
+        article_model = RawArticle(**article_doc)
         use_optimized_path = optimization_enabled and random.random() * 100 < optimization_threshold
         embeddings =  None
 

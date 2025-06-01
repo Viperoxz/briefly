@@ -16,6 +16,7 @@ from .assets import (
 from .resources.io_manager.mongo_io_manager import MongoDBIOManager
 from .resources.io_manager.qdrant_io_manager import QdrantIOManager
 from .resources.io_manager.s3_io_manager import s3_io_manager
+from .resources.database.mongo_db_resource import mongo_db_resource
 
 import os
 from dotenv import load_dotenv
@@ -36,17 +37,23 @@ load_dotenv()
 
 article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+AWS_REGION = os.getenv("AWS_REGION")
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB = os.getenv("MONGO_DB")
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+MAX_CONCURRENCIES = int(os.getenv("MAX_CONCURRENCIES", 4))
+
 MONGO_CONFIG = {
-    "uri": os.getenv("MONGO_URI"),
-    "database": os.getenv("MONGO_DB")
+    "uri": MONGO_URI,
+    "db": MONGO_DB
 }
 
 QDRANT_CONFIG = {
-    "url": os.getenv("QDRANT_URL"),
-    "api_key": os.getenv("QDRANT_API_KEY")
+    "url": QDRANT_URL,
+    "api_key": QDRANT_API_KEY
 }
-
-MAX_CONCURRENCIES = int(os.getenv("MAX_CONCURRENCIES", 4))
 
 article_partitions_sensor = article_partition_sensor
 
@@ -63,8 +70,12 @@ defs = Definitions(
     ],
     resources={
         "s3_io_manager": s3_io_manager.configured({
-            "bucket": {"env": "S3_BUCKET_NAME"},
-            "region": {"env": "AWS_REGION"}
+            "bucket": S3_BUCKET_NAME,
+            "region": AWS_REGION
+        }),
+        "mongo_db": mongo_db_resource.configured({
+            "uri": MONGO_URI,
+            "db": MONGO_DB
         }),
         "mongo_io_manager": MongoDBIOManager(MONGO_CONFIG),
         "qdrant_io_manager": QdrantIOManager(QDRANT_CONFIG)

@@ -33,7 +33,7 @@ class MongoDBIOManager(IOManager):
             print(f"Warning: Attempting to access restricted collection: {collection_name}")
             collection_name = "articles" 
         
-        db_name = self._config["database"]
+        db_name = self._config["db"]
         client = MongoClient(self._config["uri"])
         db = client[db_name]
 
@@ -80,7 +80,7 @@ class MongoDBIOManager(IOManager):
                 records = obj.to_dict(orient="records")
                 if asset_name == "articles":
                     client = MongoClient(self._config["uri"])
-                    db = client[self._config["database"]]
+                    db = client[self._config["db"]]
                     for record in records:
                         collection.update_one(
                             {"url": record["url"]},  # match by article url 

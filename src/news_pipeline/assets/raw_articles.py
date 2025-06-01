@@ -8,6 +8,9 @@ from dateutil.parser import parse as parse_date
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 import requests.exceptions
 from typing import Dict, Tuple, Optional
+import json
+import boto3
+from dotenv import load_dotenv
 
 from ..utils.extraction import (
     extract_full_article,
@@ -15,6 +18,10 @@ from ..utils.extraction import (
     parse_feed_with_retry,
 )
 from ..models import RawArticle
+
+load_dotenv()
+
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 # Define retry configuration for network-related operations
 RETRY_CONFIG = {
@@ -27,14 +34,43 @@ RETRY_CONFIG = {
     )),
 }
 
+
 @retry(**RETRY_CONFIG)
 def extract_full_article_with_retry(url: str) -> str:
     """Retry wrapper for extracting full article content with error handling."""
     return extract_full_article(url)
 
-def get_existing_urls(article_collection) -> set:
-    """Retrieve a set of existing article URLs from the MongoDB articles collection."""
-    return {doc["url"] for doc in article_collection.find({}, {"url": 1})}
+# def get_existing_urls(article_collection) -> set:
+#     """Retrieve a set of existing article URLs from the MongoDB articles collection."""
+#     return {doc["url"] for doc in article_collection.find({}, {"url": 1})}
+def get_existing_urls(bucket: str, prefix: str = "raw_data/") -> set:
+    """Scan S3 for all raw article files and collect their URLs."""
+    s3 = boto3.client(
+        "s3",
+        region_name=os.environ.get("AWS_REGION", "ap-southeast-2"),
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+    )
+    urls = set()
+    paginator = s3.get_paginator("list_objects_v2")
+
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith(".json"):
+                try:
+                    response = s3.get_object(Bucket=bucket, Key=key)
+                    body = response["Body"].read().decode("utf-8")
+                    data = json.loads(body)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and "url" in item:
+                                urls.add(item["url"])
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    print(f"❌ Error decoding JSON from {key}: {e}")
+                except Exception as e:
+                    print(f"⚠️ Unexpected error while processing {key}: {e}")
+    return urls
 
 def process_feed_entry(
     entry,
@@ -48,7 +84,7 @@ def process_feed_entry(
     try:
         article_url = entry.link
         if article_url in existing_urls:
-            logger.info(f"⏭️ Skipped (already in MongoDB): {article_url}")
+            logger.info(f"Duplicate article found: {article_url}")
             return None
 
         time.sleep(request_delay)
@@ -98,8 +134,8 @@ def process_rss_feed(
 
         source_doc = source_collection.find_one({"name": source})
         topic_doc = topic_collection.find_one({"name": topic})
-        source_id = str(source_doc["_id"]) if source_doc else None
-        topic_id = str(topic_doc["_id"]) if topic_doc else None
+        source_id = source_doc["_id"] if source_doc else None
+        topic_id = topic_doc["_id"] if topic_doc else None
 
         if not (source_id and topic_id):
             logger.warning(f"💥 Missing source or topic ID for {source}/{topic}")
@@ -110,7 +146,6 @@ def process_rss_feed(
         entries_to_process = feed.entries[:max_entries_per_feed]
         articles = []
         
-
         for entry in entries_to_process:
             result = process_feed_entry(entry, source_id, topic_id, existing_urls, logger, request_delay)
             if result:
@@ -144,8 +179,8 @@ def raw_articles(context, rss_feed_list: Dict[str, Dict[str, str]]) -> Output[pd
     topic_collection = db["topics"]
     article_collection = db["articles"]
 
-    existing_urls = get_existing_urls(article_collection)
-    logger.info(f"📊 Found {len(existing_urls)} existing articles in MongoDB")
+    existing_urls = get_existing_urls(S3_BUCKET_NAME, prefix="raw_data/")
+    logger.info(f"📊 Found {len(existing_urls)} existing articles in S3")
 
     max_entries_per_feed = int(os.getenv("MAX_ENTRIES_PER_FEED", 1))
     request_delay = float(os.getenv("REQUEST_DELAY", 1.0))
@@ -163,10 +198,13 @@ def raw_articles(context, rss_feed_list: Dict[str, Dict[str, str]]) -> Output[pd
         total_success += success
         total_failures += failures
         articles.extend(feed_articles)
-
     logger.info(f"\n📦 Total collected: {total_success} articles, {total_failures} failures")
+
     df = pd.DataFrame(articles) if articles else pd.DataFrame()
-    
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].apply(lambda x: x.decode('utf-8', errors="replace") if isinstance(x, bytes) else str(x))
+
     s3_key = f"raw_data/raw_articles_{context.run_id}.json"
     return Output(
         value=df,

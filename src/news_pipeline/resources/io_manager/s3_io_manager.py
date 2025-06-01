@@ -32,7 +32,7 @@ class RawS3IOManager(IOManager):
     def handle_output(self, context: OutputContext, obj):
         """Write output data to S3 (Raw layer: json)"""
         key = self._get_s3_key(context)
-        if isinstance(obj, (dict, list)):
+        if isinstance(obj, pd.DataFrame):
             body = obj.to_json(orient="records", force_ascii=False)
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
@@ -40,6 +40,7 @@ class RawS3IOManager(IOManager):
                 Body=body,
                 ContentType='application/json'
             )
+            context.log.info(f"Stored raw JSON at s3://{self.bucket_name}/{key}")
         elif isinstance(obj, (dict, list)):
             self.s3_client.put_object(
                 Bucket=self.bucket_name,

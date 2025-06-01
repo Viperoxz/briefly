@@ -9,8 +9,8 @@ article_partitions_def = DynamicPartitionsDefinition(name="article_partitions")
 
 articles_update_job = define_asset_job(
     name="articles_update_job",
-    selection=AssetSelection.keys("rss_feed_list", "articles"),
-    config={"ops": {"articles": {"config": {"save_json": False}}}}
+    selection=AssetSelection.keys("rss_feed_list", "raw_articles"),
+    config={"ops": {"raw_articles": {"config": {"save_json": False}}}}
 )
 
 articles_processing_job = define_asset_job(

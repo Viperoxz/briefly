@@ -9,11 +9,11 @@ from bson import ObjectId
     description="Summarize articles and store the summaries in MongoDB.",
     key="articles_with_summary",
     io_manager_key="mongo_io_manager",
-    ins={"articles": AssetIn(key="articles")},
+    ins={"raw_articles": AssetIn(key="raw_articles")},
     partitions_def=DynamicPartitionsDefinition(name="article_partitions"),
     kinds={"mongodb", "openai"}
 )
-def articles_with_summary(context, articles: pd.DataFrame) -> Output[pd.DataFrame]:
+def articles_with_summary(context, raw_articles: pd.DataFrame) -> Output[pd.DataFrame]:
     logger = get_dagster_logger()
 
     # if articles.empty:

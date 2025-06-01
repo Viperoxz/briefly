@@ -5,6 +5,7 @@ from bson import ObjectId
 from dotenv import load_dotenv
 import re
 import hashlib
+from dagster import get_dagster_logger
 
 load_dotenv()
 
@@ -57,23 +58,19 @@ class RawArticle(BaseModel):
             source_id = str(values.get("source_id", "unknown"))
             published_date = values.get("published_date")
             url = values.get("url", "")
-
             date_str = (
                 published_date.strftime("%Y%m%d%H%M%S")
                 if isinstance(published_date, datetime)
                 else "00000000000000"
             )
-
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-
             values["article_id"] = f"{source_id}_{date_str}_{url_hash}"
-
         return values
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={
-            ObjectId: lambda v: str(v),  # Convert ObjectId to string for JSON serialization
+            ObjectId: lambda v: str(v),        # Convert ObjectId to string for JSON serialization
             datetime: lambda v: v.isoformat()  # Convert datetime to ISO format for JSON/Parquet compatibility
         }
     )
@@ -104,6 +101,13 @@ class RawArticle(BaseModel):
     @field_validator("content")
     @classmethod
     def validate_content(cls, v: str) -> str:
+        logger = get_dagster_logger()
+        if isinstance(v, bytes):
+            v = v.decode("utf-8", errors="replace")
+            logger.info("Content decoded from bytes to string")
+        elif not isinstance(v, str):
+            logger.warning(f"Content is not a string: {type(v)}")
+            v = str(v)
         if len(v) < 20:
             raise ValueError("Content is too short (minimum 20 characters)")
         return v
@@ -111,13 +115,13 @@ class RawArticle(BaseModel):
     @field_validator("published_date")
     @classmethod
     def validate_published_date(cls, v: datetime) -> datetime:
-        if v > datetime.now():
+        now = datetime.now(v.tzinfo) if v.tzinfo else datetime.now()
+        if v > now:
             raise ValueError("Published date cannot be in the future")
         return v
     
 
 if __name__ == "__main__":
-    
     article = RawArticle(
         url="https://example.com/news/article-123",
         title="AI is transforming research",
